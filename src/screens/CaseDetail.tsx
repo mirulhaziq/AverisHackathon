@@ -184,7 +184,7 @@ export function CaseDetail() {
           </span>
           <div>
             <p className="result-banner__title">
-              {needsReview.length} field{needsReview.length === 1 ? '' : 's'} need review
+              {needsReview.length} field{needsReview.length === 1 ? ' needs' : 's need'} review
             </p>
             <p className="result-banner__body">
               SDVS is not sure of {needsReview.map((m) => FIELD_LABELS[m.field].toLowerCase()).join(', ')}, so it

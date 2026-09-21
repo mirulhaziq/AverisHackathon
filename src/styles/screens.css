@@ -294,6 +294,12 @@
   border-radius: var(--r-2);
 }
 
+/* Keeps a long subject or sender inside the grid column instead of
+   pushing the facts panel off the side. */
+.case-head__main {
+  min-width: 0;
+}
+
 .case-head__id {
   font-size: var(--t-micro);
   color: var(--ink-3);
@@ -967,6 +973,10 @@
   gap: var(--s-5);
 }
 
+.ds__token-group {
+  min-width: 0;
+}
+
 .ds__group-title {
   font-size: var(--t-h3);
   font-weight: 600;
@@ -1104,6 +1114,13 @@
   gap: var(--s-5);
   padding: var(--s-4) 0;
   border-top: 1px solid var(--rule-soft);
+}
+
+/* The label column of a spec row stays with the top of its examples,
+   however tall the body beside it grows. */
+.ds__spec-head {
+  align-self: start;
+  min-width: 0;
 }
 
 .ds__spec-title {

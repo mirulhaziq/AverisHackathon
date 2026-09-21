@@ -57,6 +57,7 @@
 .summary-card__note { font-size: 12px; color: var(--ink-2); }
 .home-columns { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(300px, 1fr); gap: 24px; align-items: start; }
 .home-aside { display: flex; flex-direction: column; gap: 20px; }
+.home-attention { display: flex; flex-direction: column; }
 .action-row { display: flex; gap: 18px; padding: 25px 24px; }
 .action-row + .action-row { border-top: 1px solid var(--rule-soft); }
 .action-icon { width: 46px; height: 46px; flex: none; display: grid; place-items: center; border-radius: 12px; background: var(--surface-sunken); color: var(--ink-2); }
@@ -79,6 +80,7 @@
 .simple-steps p { font-size: 13px; color: var(--ink-2); margin-top: 3px; }
 .import-caption { font-size: 14px; margin-bottom: 16px; }
 .import-link { margin-top: 12px; }
+.recent-list { display: flex; flex-direction: column; }
 .recent-email { display: flex; align-items: center; gap: 16px; padding: 17px 24px; color: var(--ink); text-decoration: none; }
 .recent-email + .recent-email { border-top: 1px solid var(--rule-soft); }
 .recent-email:hover { background: var(--surface-hover); color: var(--ink); }

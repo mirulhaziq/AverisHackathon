@@ -301,6 +301,11 @@
   font-size: var(--t-micro);
 }
 
+/* The middle column must be allowed to shrink before .truncate can clip it. */
+.gsearch__subject {
+  min-width: 0;
+}
+
 .gsearch__result {
   font-size: var(--t-nano);
   color: var(--ink-3);
@@ -632,6 +637,16 @@
 .btn__icon {
   display: inline-flex;
   flex: none;
+}
+
+/* Buttons wrap their text, so the label must be allowed to shrink.
+   An icon-only button passes no children: drop the empty span so the
+   flex gap does not leave a gap beside the icon. */
+.btn__label {
+  min-width: 0;
+}
+.btn__label:empty {
+  display: none;
 }
 
 .btn__spinner {
@@ -1357,6 +1372,16 @@ select.input,
   font-weight: 700;
 }
 
+.tab__icon {
+  display: inline-flex;
+  flex: none;
+  color: var(--ink-3);
+}
+
+.tab.is-active .tab__icon {
+  color: var(--primary-text);
+}
+
 .tab__count {
   font-size: var(--t-nano);
   background: var(--surface);
@@ -1468,6 +1493,15 @@ select.input,
   border: 1px solid var(--rule);
 }
 
+/* Segments are sized by an inline width, so they must not flex-shrink:
+   without this the accepted and rejected shares are squeezed whenever
+   they add up to the full track. */
+.progress__seg {
+  flex: none;
+  height: 100%;
+  min-width: 0;
+}
+
 .progress__seg--accepted {
   background: var(--bar-1);
 }
@@ -1487,6 +1521,12 @@ select.input,
   font-size: var(--t-micro);
   color: var(--ink-2);
   align-items: center;
+}
+
+/* The received-against-expected count leads the legend, so it reads
+   a step darker than the keys beside it. */
+.progress__stat {
+  color: var(--ink);
 }
 
 .progress__key {
@@ -1694,6 +1734,19 @@ select.input,
   padding: var(--s-2) var(--s-3);
   background: var(--surface-sunken);
   border-bottom: 1px solid var(--rule);
+}
+
+/* Compact viewers sit two-up in the review task, where the chrome has to
+   give its height back to the page image. */
+.viewer--compact .viewer__bar {
+  padding: 4px var(--s-2);
+  gap: var(--s-2);
+}
+.viewer--compact .viewer__title {
+  font-size: var(--t-nano);
+}
+.viewer--compact .viewer__marking {
+  max-width: 150px;
 }
 
 .viewer__ident {
@@ -2666,6 +2719,11 @@ select.input,
 .timeline__item--skipped .timeline__dot {
   border-color: var(--rule-strong);
   background: var(--surface);
+}
+
+.timeline__body {
+  min-width: 0;
+  padding-top: 1px;
 }
 
 .timeline__head {
