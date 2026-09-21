@@ -2,7 +2,7 @@
    4. Case detail
    ============================================================ */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ArrowLeft,
   Ban,
@@ -29,10 +29,14 @@ import { FIELD_LABELS, type EmailCase, type TimelineStep } from '../types';
 export function CaseDetail() {
   const { caseId } = useParams();
   const navigate = useNavigate();
-  const { getCase, can, retryCase, taskForCase, thresholds } = useStore();
+  const { getCase, can, retryCase, taskForCase, thresholds, loadCaseDetail } = useStore();
   const [tab, setTab] = useState('documents');
 
   const c = caseId ? getCase(caseId) : undefined;
+
+  useEffect(() => {
+    if (caseId) void loadCaseDetail(caseId);
+  }, [caseId, loadCaseDetail]);
 
   if (!c) {
     return (

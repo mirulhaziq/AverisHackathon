@@ -51,10 +51,15 @@ export function ReviewTask() {
 function ReviewTaskScreen() {
   const { taskId } = useParams();
   const navigate = useNavigate();
-  const { tasks, getTask, getCase, can, user, saveDecisions, rejectCase, pushToast, claimTask } = useStore();
+  const { tasks, getTask, getCase, can, user, saveDecisions, rejectCase, pushToast, claimTask, loadCaseDetail } =
+    useStore();
 
   const task = taskId ? getTask(taskId) : undefined;
   const c = task ? getCase(task.caseId) : undefined;
+
+  useEffect(() => {
+    if (task) void loadCaseDetail(task.caseId);
+  }, [loadCaseDetail, task]);
 
   const [decisions, setDecisions] = useState<Record<string, Decision>>({});
   const [selectedId, setSelectedId] = useState<string | null>(task?.questions[0]?.id ?? null);
@@ -146,10 +151,10 @@ function ReviewTaskScreen() {
     setSelectedId(questionId);
   }
 
-  function onSave() {
+  async function onSave() {
     setSaving(true);
-    window.setTimeout(() => {
-      const out = saveDecisions(task!.id, Object.values(decisions));
+    try {
+      const out = await saveDecisions(task!.id, Object.values(decisions));
       setSaving(false);
       setSaved(out);
       pushToast({
@@ -158,7 +163,14 @@ function ReviewTaskScreen() {
         body: `${out.caseId} has been updated. Result: ${friendlyLabel(out.result)}.`,
         action: { label: `View case ${out.caseId}`, to: `/cases/${out.caseId}` },
       });
-    }, 700);
+    } catch (e) {
+      setSaving(false);
+      pushToast({
+        tone: 'error',
+        title: 'Could not save',
+        body: e instanceof Error ? e.message : 'The API could not be reached.',
+      });
+    }
   }
 
   function onReject() {

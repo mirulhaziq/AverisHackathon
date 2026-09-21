@@ -184,7 +184,9 @@ export type ReasonCode =
   | 'UNKNOWN_PORT_ALIAS'
   | 'CATEGORY_UNCERTAIN'
   | 'WEIGHT_OUT_OF_TOLERANCE'
-  | 'FIELD_NOT_FOUND';
+  | 'FIELD_NOT_FOUND'
+  | 'WRONG_DOC_TYPE'
+  | 'UNREADABLE_DOCUMENT';
 
 export const REASON_TEXT: Record<ReasonCode, string> = {
   LOW_CONFIDENCE_OCR: 'The scan was hard to read, so the value is not certain.',
@@ -195,6 +197,8 @@ export const REASON_TEXT: Record<ReasonCode, string> = {
   CATEGORY_UNCERTAIN: 'The system is unsure what this email is asking for. Read the message to check its category.',
   WEIGHT_OUT_OF_TOLERANCE: 'The difference between the two weights is larger than allowed.',
   FIELD_NOT_FOUND: 'The field could not be found in the document.',
+  WRONG_DOC_TYPE: 'The second attachment is not actually a draft bill of lading. Check what was sent.',
+  UNREADABLE_DOCUMENT: 'A document could not be read. It may be corrupt, blank, or an unsupported file.',
 };
 
 export type TaskClaimState = 'Open' | 'Claimed' | 'Overdue';

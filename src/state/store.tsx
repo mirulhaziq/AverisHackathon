@@ -10,6 +10,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -26,18 +27,18 @@ import {
   SEED_THRESHOLDS,
   SIGNED_IN_USERS,
 } from '../data/seed';
+import { api, ApiError } from '../api/client';
+import { buildFullCase, buildLightCase, buildLightReviewTask, buildReviewTask, toWireDecisions } from '../api/adapt';
 import {
   FIELD_LABELS,
   type AuditEntry,
   type CaseResult,
-  type Category,
   type ComparisonRow,
   type ConfigThresholds,
   type Decision,
   type EmailCase,
   type ExportRecord,
   type FieldKey,
-  type FieldResult,
   type ImportBatch,
   type MappingRow,
   type PortAliasRow,
@@ -109,12 +110,6 @@ export function normalizeValue(raw: string | null | undefined): string {
   return v;
 }
 
-function compareValues(si: string | null, bl: string | null): FieldResult {
-  if (si == null && bl == null) return 'Not compared';
-  if (si == null || bl == null) return 'Mismatch';
-  return normalizeValue(si) === normalizeValue(bl) ? 'Match' : 'Mismatch';
-}
-
 export function deriveCaseResult(rows: ComparisonRow[], fallback: CaseResult): CaseResult {
   if (rows.length === 0) return fallback;
   if (rows.some((r) => r.result === 'Needs review')) return 'Needs review';
@@ -140,6 +135,12 @@ interface Store {
   setThemePref: (t: ThemePref) => void;
   resolvedTheme: 'light' | 'dark';
 
+  /* live API data. cases/tasks below start as sample data and are replaced
+     once the real API responds - see the fetch effect in StoreProvider. */
+  dataLoading: boolean;
+  dataError: string | null;
+  loadCaseDetail: (id: string) => Promise<void>;
+
   /* data */
   cases: EmailCase[];
   tasks: ReviewTask[];
@@ -159,7 +160,7 @@ interface Store {
   /* actions */
   claimTask: (taskId: string) => void;
   releaseTask: (taskId: string) => void;
-  saveDecisions: (taskId: string, decisions: Decision[]) => { caseId: string; result: CaseResult };
+  saveDecisions: (taskId: string, decisions: Decision[]) => Promise<{ caseId: string; result: CaseResult }>;
   rejectCase: (taskId: string, note: string) => { caseId: string };
   retryCase: (caseId: string, mode: 'fromFailedStep' | 'restart') => void;
   reprocessBatch: (batchId: string) => void;
@@ -256,6 +257,59 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [suffixes, setSuffixes] = useState<SuffixRow[]>(() => structuredClone(SEED_SUFFIXES));
   const [mapping, setMapping] = useState<MappingRow[]>(() => structuredClone(SEED_MAPPING));
 
+  /* --- live API load ---
+     cases/tasks start as sample data (above) so the UI never renders empty;
+     both are replaced in place once the real API responds. On failure the
+     sample data stays, and dataError drives a visible banner rather than a
+     silent, misleading fallback. */
+  const [dataLoading, setDataLoading] = useState(true);
+  const [dataError, setDataError] = useState<string | null>(null);
+  const detailLoaded = useRef(new Set<string>());
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [emailsResp, resultsResp] = await Promise.all([api.listEmails(), api.listResults()]);
+        if (cancelled) return;
+        const resultsById = new Map(resultsResp.results.map((r) => [r.email_id, r]));
+        const subjectById = new Map(emailsResp.emails.map((e) => [e.email_id, e.subject]));
+        setCases(emailsResp.emails.map((e) => buildLightCase(e, resultsById.get(e.email_id))));
+        setTasks(
+          resultsResp.results
+            .filter((r) => r.queue === 'review')
+            .map((r) => buildLightReviewTask(subjectById.get(r.email_id) ?? r.email_id, r)),
+        );
+      } catch (e) {
+        if (!cancelled) setDataError(e instanceof Error ? e.message : 'Could not reach the API.');
+      } finally {
+        if (!cancelled) setDataLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  /* Fetches the full email + result for one case (comparisons, body,
+     timeline, history) and merges it in place. Cheap to call repeatedly -
+     it only fetches once per id. Call this when a screen needs more than
+     the light listing gives it (CaseDetail, ReviewTask). */
+  const loadCaseDetail = useCallback(async (id: string) => {
+    if (detailLoaded.current.has(id)) return;
+    detailLoaded.current.add(id);
+    try {
+      const [email, result] = await Promise.all([api.getEmail(id), api.getResult(id)]);
+      setCases((prev) => prev.map((c) => (c.id === id ? buildFullCase(email, result) : c)));
+      if (result.status === 'NEEDS_REVIEW' && result.meta.queue === 'review') {
+        const full = buildReviewTask(email.subject, result);
+        setTasks((prev) => prev.map((t) => (t.caseId === id ? { ...full, claimState: t.claimState, claimedBy: t.claimedBy } : t)));
+      }
+    } catch {
+      detailLoaded.current.delete(id); // allow a retry next time the screen asks
+    }
+  }, []);
+
   /* --- toasts --- */
   const [toasts, setToasts] = useState<Toast[]>([]);
 
@@ -351,174 +405,48 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   );
 
   /* --- the core action: apply decisions and resume the case --- */
+  /* Real save: posts to POST /review/{id}/resolve and rebuilds the case from
+     the server's response, so the report reflects exactly what got stored -
+     not a client-side reconstruction of what the server probably did.
+
+     The one case this can't send anywhere: the synthetic "category" question
+     built for a case-level review (wrong_doc_type / missing_attachment /
+     unreadable - see buildLightReviewTask/buildReviewTask). The backend has
+     no field to attach that decision to yet, so it's acknowledged locally
+     only, with a toast that says so. */
   const saveDecisions = useCallback(
-    (taskId: string, decisions: Decision[]) => {
+    async (taskId: string, decisions: Decision[]) => {
       const task = tasks.find((t) => t.id === taskId);
       const actor = user?.name ?? 'Unknown reviewer';
       if (!task) return { caseId: '', result: 'Needs review' as CaseResult };
 
+      const wireDecisions = toWireDecisions(decisions, task.questions);
       let finalResult: CaseResult = 'Needs review';
 
-      setCases((prev) =>
-        prev.map((c) => {
-          if (c.id !== task.caseId) return c;
-
-          const rows = c.comparison.map((r) => ({ ...r, si: { ...r.si }, bl: { ...r.bl } }));
-          const history = [...c.reviewHistory];
-          let category: Category = c.category;
-          let categoryConfidence = c.categoryConfidence;
-          let categoryReason = c.categoryReason;
-
-          for (const d of decisions) {
-            const q = task.questions.find((x) => x.id === d.questionId);
-            if (!q) continue;
-
-            /* category questions change the classification, not a field */
-            if (q.field === 'category') {
-              if (d.kind === 'Correct' && d.value) {
-                const from = category;
-                category = d.value as Category;
-                categoryConfidence = 1;
-                categoryReason = `Corrected by ${actor} during review. Tidemark had proposed ${from} at confidence ${q.confidence.toFixed(2)}.`;
-                history.push({
-                  id: nextId('rh'),
-                  at: stamp(),
-                  actor,
-                  action: 'Category corrected',
-                  from,
-                  to: d.value,
-                });
-              } else if (d.kind === 'Confirm') {
-                categoryConfidence = 1;
-                categoryReason = `Confirmed by ${actor} during review.`;
-                history.push({
-                  id: nextId('rh'),
-                  at: stamp(),
-                  actor,
-                  action: 'Confirmed',
-                  to: category,
-                });
-              } else {
-                history.push({
-                  id: nextId('rh'),
-                  at: stamp(),
-                  actor,
-                  action: 'Marked missing',
-                  note: 'No documents were attached, so nothing could be compared.',
-                });
-              }
-              continue;
-            }
-
-            const field = q.field as FieldKey;
-            const idx = rows.findIndex((r) => r.field === field);
-            if (idx === -1) continue;
-            const r = rows[idx];
-            const before = r.bl.value;
-
-            if (d.kind === 'Mark missing') {
-              r.bl = {
-                ...r.bl,
-                value: null,
-                method: 'Not found',
-                confidence: 1,
-                snippet: `Marked missing by ${actor}. The value is not stated on this document.`,
-              };
-              history.push({
-                id: nextId('rh'),
-                at: stamp(),
-                actor,
-                field,
-                action: 'Marked missing',
-                from: before ?? undefined,
-                note: 'The reviewer confirmed the value is not stated on the draft bill of lading.',
-              });
-            } else {
-              const chosen = d.value ?? q.proposedValue;
-              const candidate = d.candidateId ? q.candidates?.find((c2) => c2.id === d.candidateId) : undefined;
-              r.bl = {
-                ...r.bl,
-                value: chosen,
-                raw: candidate?.value ?? chosen ?? undefined,
-                confidence: 1,
-                method: candidate ? candidate.doc === 'SI' ? 'Labelled field' : r.bl.method : r.bl.method,
-                snippet: candidate
-                  ? `${candidate.snippet}\nChosen by ${actor} from ${candidate.sourceLabel}.`
-                  : `${r.bl.snippet}\n${d.kind === 'Correct' ? 'Corrected' : 'Confirmed'} by ${actor}.`,
-                region: candidate?.region ?? r.bl.region,
-              };
-              history.push({
-                id: nextId('rh'),
-                at: stamp(),
-                actor,
-                field,
-                action: d.kind === 'Correct' ? 'Corrected' : 'Confirmed',
-                from: before ?? undefined,
-                to: chosen ?? undefined,
-                note: candidate ? `Taken from ${candidate.sourceLabel}.` : undefined,
-              });
-            }
-
-            /* the question is answered, so the row is compared again */
-            r.result = compareValues(r.si.value, r.bl.value);
-            r.reviewReason = undefined;
-            if (r.result === 'Match' && r.si.value && r.bl.value && r.si.value !== r.bl.value) {
-              r.normalizationNote = 'Matched after normalization: letter case, punctuation and units were ignored.';
-            }
-            if (r.bl.value == null) {
-              r.normalizationNote = undefined;
-            }
-            rows[idx] = r;
-          }
-
-          const result = deriveCaseResult(rows, category === 'Document comparison request' ? 'Not applicable' : 'Not applicable');
-          finalResult = result;
-
-          const extraSteps = [
-            {
-              step: 'ApplyReviewDecisions',
-              state: 'Done' as const,
-              at: stamp(),
-              detail: `${decisions.length} decision${decisions.length === 1 ? '' : 's'} applied by ${actor}.`,
-              durationMs: 900,
-            },
-            ...(rows.length > 0
-              ? [
-                  {
-                    step: 'CompareFields',
-                    state: 'Done' as const,
-                    at: stamp(),
-                    detail: `Re-run after review. ${rows.filter((r) => r.result === 'Match').length} fields match, ${rows.filter((r) => r.result === 'Mismatch').length} differ.`,
-                    durationMs: 2100,
-                  },
-                ]
-              : []),
-            {
-              step: 'PublishResult',
-              state: 'Done' as const,
-              at: stamp(),
-              detail:
-                rows.length === 0
-                  ? 'Confirmed as classified, but no documents were attached, so nothing could be compared. Result published: Not applicable.'
-                  : `Result published: ${result}.`,
-              durationMs: 720,
-            },
-          ];
-
-          return {
-            ...c,
-            category,
-            categoryConfidence,
-            categoryReason,
-            comparison: rows,
-            reviewHistory: history,
-            status: 'Completed',
-            result,
-            updatedAt: stamp().slice(0, 16),
-            timeline: [...c.timeline.filter((s) => s.step !== 'PublishResult'), ...extraSteps],
-          };
-        }),
-      );
+      if (wireDecisions) {
+        const updated = await api.resolve(task.caseId, wireDecisions, actor);
+        const existing = cases.find((c) => c.id === task.caseId);
+        const email = {
+          email_id: task.caseId,
+          from: existing?.sender ?? '',
+          subject: existing?.subject ?? task.subject,
+          body: existing?.body ?? '',
+          attachments: existing?.attachments.map((a) => a.id) ?? [],
+        };
+        const nextCase = buildFullCase(email, updated);
+        setCases((prev) => prev.map((c) => (c.id === task.caseId ? nextCase : c)));
+        finalResult = nextCase.result;
+      } else {
+        pushToast({
+          tone: 'info',
+          title: 'Acknowledged locally',
+          body: 'This review has no matching field on the server yet, so it was only cleared in this browser.',
+        });
+        setCases((prev) =>
+          prev.map((c) => (c.id === task.caseId ? { ...c, status: 'Completed', result: 'Not applicable' } : c)),
+        );
+        finalResult = 'Not applicable';
+      }
 
       setTasks((prev) => prev.filter((t) => t.id !== taskId));
 
@@ -532,18 +460,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           action: 'Decision saved',
           target: task.caseId,
           ip: '203.0.113.42',
-          detail: {
-            Task: task.id,
-            Field: label,
-            Decision: d.kind,
-            Value: d.value ?? 'Not stated',
-          },
+          detail: { Task: task.id, Field: label, Decision: d.kind, Value: d.value ?? 'Not stated' },
         });
       }
 
       return { caseId: task.caseId, result: finalResult };
     },
-    [logAudit, tasks, user],
+    [cases, logAudit, pushToast, tasks, user],
   );
 
   const rejectCase = useCallback(
@@ -609,29 +532,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const retryCase = useCallback(
     (caseId: string, mode: 'fromFailedStep' | 'restart') => {
       const actor = user?.name ?? 'Unknown operator';
-      setCases((prev) =>
-        prev.map((c) => {
-          if (c.id !== caseId) return c;
-          const failedStep = c.failure?.step ?? 'ReadDocuments';
-          return {
-            ...c,
-            status: 'Processing',
-            updatedAt: stamp().slice(0, 16),
-            timeline: [
-              ...c.timeline,
-              {
-                step: mode === 'restart' ? 'Restart' : `Retry ${failedStep}`,
-                state: 'Running' as const,
-                at: stamp(),
-                detail:
-                  mode === 'restart'
-                    ? `Restarted from the beginning by ${actor}.`
-                    : `Retried from ${failedStep} by ${actor}.`,
-              },
-            ],
-          };
-        }),
-      );
+      setCases((prev) => prev.map((c) => (c.id === caseId ? { ...c, status: 'Processing' } : c)));
       logAudit({
         actor,
         actorRole: user?.role ?? 'Operator',
@@ -641,35 +542,28 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         detail: { Mode: mode === 'restart' ? 'Restart' : 'Retry from failed step' },
       });
 
-      /* the prototype settles back into the failed state so the screen stays honest */
-      window.setTimeout(() => {
-        setCases((prev) =>
-          prev.map((c) =>
-            c.id === caseId
-              ? {
-                  ...c,
-                  status: 'Failed',
-                  result: 'Failed',
-                  updatedAt: stamp().slice(0, 16),
-                  timeline: [
-                    ...c.timeline,
-                    {
-                      step: c.failure?.step ?? 'ReadDocuments',
-                      state: 'Failed' as const,
-                      at: stamp(),
-                      detail: 'The file could not be read. The upload is still incomplete.',
-                    },
-                  ],
-                }
-              : c,
-          ),
-        );
-        pushToast({
-          tone: 'error',
-          title: 'Retry failed',
-          body: `${caseId} failed again at ${SEED_CASES.find((c) => c.id === caseId)?.failure?.step ?? 'ReadDocuments'}. The file is still unreadable, so ask the sender to resend it.`,
-        });
-      }, 2600);
+      /* Real retry: the whole pipeline re-runs for this one email (there is
+         no partial-resume yet - see docs/ROADMAP.md Phase 6/8) and the case
+         is rebuilt from whatever it actually produces this time. */
+      (async () => {
+        try {
+          const [result, email] = await Promise.all([api.process(caseId), api.getEmail(caseId)]);
+          const nextCase = buildFullCase(email, result);
+          setCases((prev) => prev.map((c) => (c.id === caseId ? nextCase : c)));
+          pushToast({
+            tone: nextCase.status === 'Failed' ? 'error' : 'success',
+            title: nextCase.status === 'Failed' ? 'Retry failed again' : 'Retry finished',
+            body: `${caseId} now reads ${nextCase.result}.`,
+          });
+        } catch (e) {
+          setCases((prev) => prev.map((c) => (c.id === caseId ? { ...c, status: 'Failed', result: 'Failed' } : c)));
+          pushToast({
+            tone: 'error',
+            title: 'Retry failed',
+            body: e instanceof ApiError ? e.message : 'The API could not be reached.',
+          });
+        }
+      })();
     },
     [logAudit, pushToast, user],
   );
@@ -807,6 +701,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       themePref,
       setThemePref,
       resolvedTheme,
+      dataLoading,
+      dataError,
+      loadCaseDetail,
       cases,
       tasks,
       batches,
@@ -841,11 +738,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       can,
       cases,
       claimTask,
+      dataError,
+      dataLoading,
       dismissToast,
       expireSession,
       exportsList,
       getCase,
       getTask,
+      loadCaseDetail,
       mapping,
       portAliases,
       pushToast,

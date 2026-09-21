@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { AppShell } from './components/AppShell';
+import { Banner } from './components/feedback';
 import { useStore } from './state/store';
 import { SignIn } from './screens/SignIn';
 import { Dashboard } from './screens/Dashboard';
@@ -29,7 +30,7 @@ const TITLES: Array<[RegExp, string]> = [
 ];
 
 export function App() {
-  const { user } = useStore();
+  const { user, dataError } = useStore();
   const { pathname } = useLocation();
 
   if (!user) return <SignIn />;
@@ -38,6 +39,12 @@ export function App() {
 
   return (
     <AppShell title={title}>
+      {dataError && (
+        <Banner tone="warning" title="Showing sample data">
+          The live API could not be reached ({dataError}), so this screen is showing sample data instead of real
+          results.
+        </Banner>
+      )}
       <Routes>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<Dashboard />} />
