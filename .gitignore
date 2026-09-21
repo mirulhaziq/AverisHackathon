@@ -60,3 +60,6 @@ _legacy/
 ground_truth.json
 score*.py
 __pycache__/
+
+# organizers' dataset bundle — never ship this to a public repo
+/sdoc-hackathon-bundle/
