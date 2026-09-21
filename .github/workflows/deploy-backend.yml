@@ -1,0 +1,57 @@
+name: deploy-backend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - ".github/workflows/deploy-backend.yml"
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ap-southeast-1
+  ECR_REPO: sdoc-api
+  LAMBDA_FUNCTION: sdoc-api
+
+concurrency:
+  group: deploy-backend
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push image
+        working-directory: backend
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          IMAGE="$REGISTRY/$ECR_REPO"
+          docker build --provenance=false --build-arg GIT_SHA=${GITHUB_SHA::7} -t "$IMAGE:${GITHUB_SHA}" -t "$IMAGE:latest" .
+          docker push "$IMAGE:${GITHUB_SHA}"
+          docker push "$IMAGE:latest"
+          echo "IMAGE_URI=$IMAGE:${GITHUB_SHA}" >> "$GITHUB_ENV"
+
+      - name: Update Lambda
+        run: |
+          aws lambda update-function-code --function-name "$LAMBDA_FUNCTION" --image-uri "$IMAGE_URI" > /dev/null
+          aws lambda wait function-updated --function-name "$LAMBDA_FUNCTION"
+
+      - name: Smoke test
+        run: |
+          URL=$(aws lambda get-function-url-config --function-name "$LAMBDA_FUNCTION" --query FunctionUrl --output text)
+          curl -fsS --retry 3 --retry-delay 5 --retry-all-errors "${URL}health"
