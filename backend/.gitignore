@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.venv/
+.env
+data/
+*.zip
+ground_truth.json
+score*.py

@@ -52,3 +52,11 @@ $RECYCLE.BIN/
 
 # Original prototype kept locally for reference, not shipped
 _legacy/
+
+# backend / dataset safety
+.env
+*.zip
+/data/
+ground_truth.json
+score*.py
+__pycache__/
