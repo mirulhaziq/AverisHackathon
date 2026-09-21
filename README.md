@@ -11,7 +11,7 @@ Built for the **Averis x Monash Hackathon 2026**.
 
 | | |
 |---|---|
-| **Live app** | _TODO: CloudFront URL of distribution `E3QBWZFQ1113X6`_ |
+| **Live app** | https://d2iqlar05ehorp.cloudfront.net |
 | **Live API** | https://shvvk2hpodi2yucfujf4kmsada0ulgnx.lambda-url.ap-southeast-1.on.aws/health |
 | **Docs** | [Requirements (SRS)](docs/SRS.md) · [Design (SDD)](docs/SDD.md) · [Build roadmap](docs/ROADMAP.md) · [Brand](BRAND.md) |
 
@@ -34,6 +34,10 @@ Built for the **Averis x Monash Hackathon 2026**.
    kind and a retryable flag; one click reprocesses it.
 
 Current run on the full dataset: **520 emails processed, 0 failures** — 357 OK, 46 mismatches, 117 sent to review.
+
+**Scored against the organizers' actual ground truth** (`score_cli.py`, not a guess): **0.9537 final score**
+(98.7% classification accuracy, 100% defect recall, 93.5% end-to-end defect catch, 5/5 `wrong_doc_type` edge
+cases correctly escalated). This is real validation, not a self-reported estimate.
 
 ## Where AI is used
 
@@ -165,11 +169,17 @@ Pushing to `main` deploys automatically (see `.github/workflows/`). The workflow
 
 - **Sample-only screens.** Email imports, export history, settings and activity history have no backend yet; they
   run on example data and are labelled as such in the UI.
-- **Evidence viewer.** Real cases show text snippets as evidence; highlighted page images are not generated yet.
+- **Evidence viewer shows text and the original file, not a pixel-highlighted page image.** Real cases render the
+  actual attachment (text with the matching line highlighted, or the original PDF in an inline viewer) — there's
+  no bounding-box overlay on a rendered page, since that needs OCR-derived coordinates (Textract, not built yet).
 - **Case-level reviews** (wrong document type, missing attachment, unreadable) have no field to resolve against on
   the server, so acknowledging one is local to the browser.
 - **Demo token in the UI bundle.** Accepted for the hackathon so judges can try review and retry; a production
   build would use per-user sign-in (the SDD plans Amazon Cognito) instead of a shared token.
+- **LLM extraction fallback is built but not wired in.** Field extraction in the live pipeline is rules-only
+  (`backend/app/pipeline/fields.py`); a complete LLM-fallback implementation with its own contracts, prompts and
+  rule ladder exists on `feature/llm-extraction-fallback` (`tools/`) but hasn't been merged into the live
+  pipeline yet.
 - **No OCR yet.** Scanned PDFs are read from whatever text layer they have; Amazon Textract is designed in the SDD
   but not built.
 - **No port alias table.** `SHANGHAI` vs `CNSHA` is not treated as the same port yet.

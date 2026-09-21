@@ -68,27 +68,49 @@ Mapped to the hackathon's judging criteria (see [Rules & Regulations](<../Averis
 
 ## 6. Current status
 
-*Last checked against the repo and the live API on 22 September 2026 (backend commit `549682a`, UI commit `012d82f`).*
+*Last checked against the repo and the live API on 22 September 2026 (backend commit `a492dec`, UI commit `f575127`).*
 
 | Phase | Status | Evidence |
 |---|---|---|
-| 0 — Account and safety | ✅ Done | OIDC deployer role in use by both workflows. |
+| 0 — Account and safety | ✅ Done | OIDC deployer role in use by both workflows. A second, more tightly scoped IAM user (`teammate-dev`) is in use for day-to-day AWS CLI access, confirming least-privilege access is actually enforced, not just planned. |
 | 1 — Deployed skeleton | ✅ Done | FastAPI on Lambda behind a Function URL; `/health` returns the deployed commit, region and storage mode. |
-| 2 — CI/CD and repo hygiene | ✅ Done | `deploy-backend.yml` (ECR → Lambda → smoke test) and `deploy-ui.yml` (S3 → CloudFront). Dataset, answer key and scoring scripts are gitignored. |
+| 2 — CI/CD and repo hygiene | ✅ Done | `deploy-backend.yml` (ECR → Lambda → smoke test) and `deploy-ui.yml` (S3 → CloudFront). Dataset, answer key and scoring scripts are gitignored — including the organizers' full docker/scoring kit (`sdoc-hackathon-docker/`, which carries the real `ground_truth.json`), added to `.gitignore` the same day it arrived. |
 | 3 — LLM access | ✅ Done | Amazon Bedrock (Nova Lite by default, configurable per task); `/llm/ping` proves access from the deployed app. |
 | 4 — Storage | ✅ Done | Dataset in a private S3 bucket; `backend/app/cloud/storage.py` reads S3 in the cloud and a local folder in dev. |
 | 5 — LLM client | ✅ Done | `backend/app/cloud/llm.py`: retries, timeouts, JSON-schema validation, typed `LLMError` with a retryable flag, in-memory cache. |
 | 6 — State | ✅ Done — **G3 met** | DynamoDB results store with review and failure queues; `/process-all` is resumable per email. All 520 emails processed on the public URL (357 OK, 46 mismatch, 117 review, 0 failed). |
-| 7 — Advanced inputs | 🟡 Partial | PDF text layers, Word and Excel are read directly, and unreadable files go to review. No Textract OCR for scans. |
+| 7 — Advanced inputs | 🟡 Partial | PDF text layers, Word and Excel are read directly, and unreadable files go to review. No Textract OCR for scans yet. Real attachment text/original-file rendering is live in the review UI (`LiveDocument.tsx`), including line-level evidence highlighting and an inline PDF viewer. |
 | 8 — Failure visibility | ✅ Done | `/failures` exposes step, error kind and retryable flag; the UI's Retry calls `/process/{id}`. |
 | 9 — Hardening | 🟡 Partial | Demo token guards every paid or write endpoint (fails closed if unset). No rate limiting; cold-start and phone tests not recorded. |
-| 10 — Freeze and support | 🟡 In progress | README with architecture diagram added. Deck and demo video outstanding. |
+| 10 — Freeze and support | 🟡 In progress | README with architecture diagram, live app URL and API table added. Deck and demo video outstanding. |
+
+### Validated against the real ground truth (not a self-estimate)
+
+The organizers' full docker/scoring kit (`sdoc-hackathon-docker/`) arrived mid-build and includes `score_cli.py` plus
+the actual `ground_truth.json` — both gitignored immediately, never committed. Running the real submission through it:
+
+| Metric | Score |
+|---|---|
+| **Final score** | **0.9537** |
+| Stage 1 classification accuracy / macro-F1 | 98.7% / 98.2% |
+| Stage 3 defect recall / precision | 100% / 92.0% |
+| **End-to-end (headline metric)** | **93.5%** (43/46 defect emails caught fully end to end) |
+| Escalation recall (gold `NEEDS_REVIEW` cases caught) | 95% (19/20) |
+| `wrong_doc_type` edge cases caught | 5/5 |
+
+This is the evidence the "Feasibility and Validation" judging criterion asks for. Two real bugs were found and
+fixed this way, not by inspection: `_assign_roles` originally trusted the `_SI`/`_BL` filename suffix rather than
+reading the content, missing all 5 `wrong_doc_type` gold cases (a file literally named `..._BL.txt` was a
+commercial invoice); and the classifier read "the real BL isn't attached" as "this isn't a comparison request,"
+misclassifying the same 5 cases as `GENERAL` before they ever reached document-role logic. Fixing both took the
+score from 0.9492 → 0.9537 and escalation recall from 70% → 95%.
 
 ### Remaining gaps
 
 - **UI screens on sample data:** email imports, export history, settings and activity history have no backend endpoints; they are labelled as sample data in the UI.
 - **Case-level reviews** (wrong document type, missing attachment, unreadable) cannot be resolved on the server yet — only per-field reviews are.
 - **Normalization:** no port alias table (e.g. `CNSHA` vs `SHANGHAI`) and no number-word parsing.
+- **LLM extraction fallback exists but isn't merged.** `feature/llm-extraction-fallback` has a complete implementation (`tools/contracts.py`, `tools/classify.py`, `tools/extract.py`, `tools/llm_classify.py`, `tools/llm_extract.py`) with its own Pydantic contracts and a rule-ladder-plus-LLM design, built independently of `backend/app/pipeline/`. It would mainly help the 117 `NEEDS_REVIEW` cases where rules alone can't find a field. Integrating it means reconciling two parallel extraction designs, not just merging a branch.
 - **Security:** the demo token is baked into the public UI bundle, an accepted hackathon tradeoff. Production would use Cognito sign-in as the SDD describes.
 
 ---
