@@ -1,4 +1,4 @@
 -r requirements.txt
 pytest>=8
 httpx>=0.27
-moto[s3]>=5
+moto[s3,dynamodb]>=5
