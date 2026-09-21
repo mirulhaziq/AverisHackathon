@@ -8,6 +8,7 @@ import './styles/base.css';
 import './styles/components.css';
 import './styles/screens.css';
 import './styles/usability.css';
+import './styles/brand.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

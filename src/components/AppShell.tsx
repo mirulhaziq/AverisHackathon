@@ -5,7 +5,6 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Anchor,
   ChevronDown,
   Download,
   History,
@@ -30,6 +29,7 @@ import type { Role } from '../types';
 import { IconButton } from './Button';
 import { ToastStack } from './feedback';
 import { friendlyLabel } from '../data/labels';
+import { TideMark } from './Brand';
 
 interface NavItem {
   to: string;
@@ -51,7 +51,7 @@ export function AppShell({ children, title }: { children: React.ReactNode; title
   const openTasks = tasks.length;
 
   const mainNav: NavItem[] = [
-    { to: '/dashboard', label: 'Home', icon: LayoutDashboard },
+    { to: '/dashboard', label: 'Overview', icon: LayoutDashboard },
     { to: '/inbox', label: 'All emails', icon: Inbox },
     { to: '/review', label: 'Needs review', icon: ListChecks, badge: openTasks },
     { to: '/batches', label: 'Email imports', icon: Layers },
@@ -127,14 +127,16 @@ export function AppShell({ children, title }: { children: React.ReactNode; title
       <nav className="rail" aria-label="Sections">
         <Link to="/dashboard" className="rail__brand">
           <span className="rail__mark" aria-hidden="true">
-            <Anchor size={17} />
+            <TideMark />
           </span>
           <span className="rail__brand-text">
-            <strong>SDVS</strong>
-            <span>Shipping document checks</span>
+            <strong>Tidemark</strong>
+            <span>DOCUMENT INTELLIGENCE</span>
           </span>
         </Link>
 
+        <div className="rail__workspace"><span className="workspace-dot" /> Shipping workspace <span className="mono">01</span></div>
+        <p className="rail__group-title">WORKSPACE</p>
         <ul className="rail__list">
           {mainNav.map((n) => (
             <li key={n.to}>
@@ -168,7 +170,7 @@ export function AppShell({ children, title }: { children: React.ReactNode; title
         )}
 
         <div className="rail__foot">
-          <p className="rail__help-note">Need a hand?</p>
+          <div className="rail__manifesto"><TideMark /><p>Clear documents.<br />Confident departures.</p></div>
           <NavLink to="/help" className={({ isActive }) => `rail__link rail__link--quiet${isActive ? ' is-active' : ''}`}>
             <CircleHelp size={18} aria-hidden="true" />
             <span>Help & guidance</span>
@@ -183,7 +185,7 @@ export function AppShell({ children, title }: { children: React.ReactNode; title
           <IconButton label="Open navigation" className="topbar__menu" onClick={() => setSheetOpen(true)}>
             <Menu size={18} />
           </IconButton>
-          <h1 className="topbar__title">{title}</h1>
+          <span className="topbar__context">Workspace <span>/</span></span><h1 className="topbar__title">{title}</h1>
         </div>
 
         <GlobalSearch />
@@ -295,7 +297,7 @@ export function AppShell({ children, title }: { children: React.ReactNode; title
           <div ref={sheetRef} className="sheet__panel">
             <div className="sheet__head">
               <span className="sheet__brand">
-                <Anchor size={16} aria-hidden="true" /> SDVS
+                <TideMark /> Tidemark
               </span>
               <IconButton label="Close navigation" onClick={() => setSheetOpen(false)}>
                 <X size={18} />

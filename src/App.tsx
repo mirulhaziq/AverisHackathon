@@ -15,7 +15,7 @@ import { DesignSystem } from './screens/DesignSystem';
 import { Help } from './screens/Help';
 
 const TITLES: Array<[RegExp, string]> = [
-  [/^\/dashboard/, 'Home'],
+  [/^\/dashboard/, 'Overview'],
   [/^\/inbox/, 'All emails'],
   [/^\/cases/, 'Email details'],
   [/^\/review\/.+/, 'Check document details'],
@@ -34,7 +34,7 @@ export function App() {
 
   if (!user) return <SignIn />;
 
-  const title = TITLES.find(([re]) => re.test(pathname))?.[1] ?? 'SDVS';
+  const title = TITLES.find(([re]) => re.test(pathname))?.[1] ?? 'Tidemark';
 
   return (
     <AppShell title={title}>

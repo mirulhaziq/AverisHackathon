@@ -143,7 +143,7 @@ export function InboxReport() {
           <div className="table-wrap">
             <table className="table table--dense table--rows readable-table">
               <caption className="sr-only">
-                Emails read by SDVS with category, status and comparison result
+                Emails read by Tidemark with category, status and comparison result
               </caption>
               <thead>
                 <tr>

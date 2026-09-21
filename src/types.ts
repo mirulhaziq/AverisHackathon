@@ -1,5 +1,5 @@
 /* ============================================================
-   SDVS domain types
+   Tidemark domain types
    ============================================================ */
 
 export type Role = 'Operator' | 'Reviewer' | 'Admin';
@@ -12,7 +12,7 @@ export interface User {
   initials: string;
 }
 
-/** How SDVS classified the email. */
+/** How Tidemark classified the email. */
 export type Category =
   | 'Document comparison request'
   | 'New SI request'

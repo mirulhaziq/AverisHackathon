@@ -43,8 +43,8 @@ export function ImportBatches() {
         <section className="panel">
           <EmptyState
             icon={<Layers size={22} />}
-            title="No batches yet"
-            body="No sweep of the inbox has run. The first batch starts at 03:00, or an admin can start one from Configuration."
+            title="No imports yet"
+            body="The inbox has not been read yet. The first import starts at 03:00, or an admin can start one from Settings."
           />
         </section>
       ) : (
@@ -76,8 +76,8 @@ export function ImportBatches() {
                       disabled={b.state === 'Complete'}
                       title={
                         b.state === 'Complete'
-                          ? 'Nothing to reprocess. This batch finished with no rejects.'
-                          : 'Put the rejected records and the dead-letter queue through again'
+                          ? 'Nothing to try again. This import finished with nothing rejected.'
+                          : 'Try the rejected emails and the ones that could not arrive again'
                       }
                     >
                       Try import again

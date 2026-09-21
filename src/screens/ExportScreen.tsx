@@ -119,7 +119,7 @@ export function ExportScreen() {
         >
           <p className="banner__line">
             These cases will be exported with the result <strong>Needs review</strong> and their uncertain values
-            left as SDVS read them. Resolve them first if the submission should carry confirmed values.
+            left as Tidemark read them. Resolve them first if the submission should carry confirmed values.
           </p>
           <ul className="export__waiting">
             {waiting.map((c) => (

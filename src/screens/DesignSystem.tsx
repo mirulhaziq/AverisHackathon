@@ -28,7 +28,7 @@ import type { CaseResult, CaseStatus, Category, Decision, FieldResult } from '..
 const TOKEN_GROUPS: Array<{ title: string; note: string; tokens: string[] }> = [
   {
     title: 'Surfaces and rules',
-    note: 'Cool paper behind the app, white panels, thin rules instead of shadows.',
+    note: 'Warm ivory paper, quiet panels, and fine rules for a document-led workspace.',
     tokens: ['--paper', '--surface', '--surface-sunken', '--surface-hover', '--rule-soft', '--rule', '--rule-strong'],
   },
   {
@@ -37,9 +37,14 @@ const TOKEN_GROUPS: Array<{ title: string; note: string; tokens: string[] }> = [
     tokens: ['--ink', '--ink-2', '--ink-3'],
   },
   {
-    title: 'Steel blue, the primary',
+    title: 'Sea green, the primary',
     note: 'Used for the rail, primary buttons and links. Deep enough to carry white text.',
     tokens: ['--steel-900', '--steel-800', '--steel-700', '--steel-600', '--steel-500', '--steel-300', '--steel-100'],
+  },
+  {
+    title: 'Signal orange',
+    note: 'The Tidemark accent: warm course lines, editorial labels, and the custom tide mark.',
+    tokens: ['--brand-orange', '--brand-soft', '--brand-peach'],
   },
   {
     title: 'Highlighter yellow',
@@ -69,14 +74,14 @@ const TOKEN_GROUPS: Array<{ title: string; note: string; tokens: string[] }> = [
 ];
 
 const TYPE_ROWS = [
-  { token: '--t-display', px: '28px', font: 'Archivo 600', sample: 'Mismatch found in one field', cls: 'ty-display' },
-  { token: '--t-h1', px: '22px', font: 'Archivo 600', sample: 'Review task T-2051', cls: 'ty-h1' },
-  { token: '--t-h2', px: '18px', font: 'Archivo 600', sample: 'Field comparison', cls: 'ty-h2' },
-  { token: '--t-h3', px: '15px', font: 'Archivo 600', sample: 'Gross weight (kg)', cls: 'ty-h3' },
-  { token: '--t-body', px: '14px', font: 'Public Sans 400', sample: 'The scan was hard to read, so the value is not certain.', cls: 'ty-body' },
-  { token: '--t-small', px: '13px', font: 'Public Sans 400', sample: 'Matched after normalization: letter case ignored.', cls: 'ty-small' },
-  { token: '--t-micro', px: '12px', font: 'Public Sans 600', sample: 'Port of discharge', cls: 'ty-micro' },
-  { token: '--t-nano', px: '11px', font: 'Public Sans 400', sample: 'Updated 2026-09-21 08:14', cls: 'ty-nano' },
+  { token: '--t-display', px: '28px', font: 'Manrope 600', sample: 'Mismatch found in one field', cls: 'ty-display' },
+  { token: '--t-h1', px: '30px', font: 'Manrope 600', sample: 'Review task T-2051', cls: 'ty-h1' },
+  { token: '--t-h2', px: '18px', font: 'Manrope 600', sample: 'Field comparison', cls: 'ty-h2' },
+  { token: '--t-h3', px: '15px', font: 'Manrope 600', sample: 'Gross weight (kg)', cls: 'ty-h3' },
+  { token: '--t-body', px: '16px', font: 'DM Sans 400', sample: 'The scan was hard to read, so the value is not certain.', cls: 'ty-body' },
+  { token: '--t-small', px: '15px', font: 'DM Sans 400', sample: 'Matched after normalization: letter case ignored.', cls: 'ty-small' },
+  { token: '--t-micro', px: '13px', font: 'DM Sans 600', sample: 'Port of discharge', cls: 'ty-micro' },
+  { token: '--t-nano', px: '12px', font: 'DM Sans 400', sample: 'Updated 2026-09-21 08:14', cls: 'ty-nano' },
   { token: 'mono', px: '13px', font: 'IBM Plex Mono 400', sample: 'E-1042 · LOW_CONFIDENCE_OCR · MYPKG', cls: 'ty-mono' },
 ];
 
@@ -126,7 +131,7 @@ export function DesignSystem() {
     <div className="page ds" ref={probeRef}>
       <header className="page__head">
         <div>
-          <h2 className="page__title">SDVS design system</h2>
+          <h2 className="page__title">Tidemark design system</h2>
           <p className="page__sub">
             Tokens, type, spacing and every component with the states it needs. Switch the theme in the top bar to
             check both palettes.
@@ -170,7 +175,7 @@ export function DesignSystem() {
           Type scale
         </h3>
         <p className="ds__note">
-          Headings in Archivo, a sturdy grotesque. Body in Public Sans. Identifiers and reason codes in IBM Plex
+          Headings in Manrope, a sturdy grotesque. Body in DM Sans. Identifiers and reason codes in IBM Plex
           Mono so a code can be read character by character.
         </p>
         <table className="table table--type">
@@ -602,7 +607,7 @@ export function DesignSystem() {
             <div className="panel">
               <EmptyState
                 title="The review queue is empty"
-                body="Every value SDVS was unsure about has been confirmed or corrected. New tasks appear here as batches run."
+                body="Every value Tidemark was unsure about has been confirmed or corrected. New tasks appear here as batches run."
                 action={{ label: 'Open the inbox report', to: '/inbox' }}
               />
             </div>
@@ -643,7 +648,7 @@ export function DesignSystem() {
             <strong>Document and email text is plain text.</strong> No rendered HTML from a message, ever.
           </li>
           <li>
-            <strong>Uncertainty is stated, not hidden.</strong> A value SDVS is unsure of says Needs review with
+            <strong>Uncertainty is stated, not hidden.</strong> A value Tidemark is unsure of says Needs review with
             its reason, and never a guess.
           </li>
         </ul>

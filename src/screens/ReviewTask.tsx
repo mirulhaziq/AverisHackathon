@@ -4,7 +4,7 @@
    highlight over the source. Right: one decision card per field.
    ============================================================ */
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft,
   ArrowRight,
@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Button, IconButton } from '../components/Button';
-import { DecisionCard } from '../components/DecisionCard';
+import { DecisionCard, type DecisionCardActions } from '../components/DecisionCard';
 import { EvidenceViewer } from '../components/EvidenceViewer';
 import { Banner, EmptyState } from '../components/feedback';
 import { CategoryChip, ReasonCodeTag } from '../components/chips';
@@ -39,10 +39,19 @@ import {
 
 type Pane = 'email' | 'documents' | 'decisions';
 
+const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
+
+/* Keyed by task so that moving straight on to the next review (from the
+   saved panel) starts with fresh decisions instead of the last task's state. */
 export function ReviewTask() {
   const { taskId } = useParams();
+  return <ReviewTaskScreen key={taskId} />;
+}
+
+function ReviewTaskScreen() {
+  const { taskId } = useParams();
   const navigate = useNavigate();
-  const { getTask, getCase, can, user, saveDecisions, rejectCase, pushToast, claimTask } = useStore();
+  const { tasks, getTask, getCase, can, user, saveDecisions, rejectCase, pushToast, claimTask } = useStore();
 
   const task = taskId ? getTask(taskId) : undefined;
   const c = task ? getCase(task.caseId) : undefined;
@@ -60,11 +69,26 @@ export function ReviewTask() {
 
   const editable = can('resolveTask');
 
+  /* Keyboard path. Each card registers its actions here; one window listener
+     calls whichever handler the latest render left in keyHandler. */
+  const cardActions = useRef(new Map<string, DecisionCardActions>());
+  const keyHandler = useRef<(e: KeyboardEvent) => void>(() => {});
+  /* React's autoFocus skips links, so the saved panel's lead action is
+     focused through this ref instead; Enter then opens it. */
+  const focusOnMount = useCallback((el: HTMLElement | null) => el?.focus(), []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => keyHandler.current(e);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   useEffect(() => {
     if (task && selectedId === null) setSelectedId(task.questions[0]?.id ?? null);
   }, [selectedId, task]);
 
   if ((!task || !c) && !saved) {
+    keyHandler.current = () => {};
     return (
       <div className="page">
         <EmptyState
@@ -152,8 +176,76 @@ export function ReviewTask() {
     navigate('/review');
   }
 
+  keyHandler.current = (e: KeyboardEvent) => {
+    if (saved || !task || e.defaultPrevented) return;
+    const target = e.target instanceof Element ? e.target : null;
+    const typing = !!target?.closest('input:not([type="radio"]), textarea, select, [contenteditable="true"]');
+
+    if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === 's') {
+      e.preventDefault();
+      if (!editable || saving) return;
+      if (undecided > 0) {
+        pushToast({
+          tone: 'info',
+          title: 'Not saved yet',
+          body: `Decide the ${undecided} remaining card${undecided === 1 ? '' : 's'} first, then save.`,
+        });
+        return;
+      }
+      onSave();
+      return;
+    }
+
+    if (typing || rejecting || e.metaKey || e.ctrlKey || e.altKey) return;
+    const qs = task.questions;
+    const i = Math.max(0, qs.findIndex((q) => q.id === selected?.id));
+    const actions = selected ? cardActions.current.get(selected.id) : undefined;
+
+    switch (e.key) {
+      case 'j':
+      case 'J':
+        if (i < qs.length - 1) {
+          e.preventDefault();
+          setSelectedId(qs[i + 1].id);
+          setHovered(null);
+        }
+        return;
+      case 'k':
+      case 'K':
+        if (i > 0) {
+          e.preventDefault();
+          setSelectedId(qs[i - 1].id);
+          setHovered(null);
+        }
+        return;
+      case 'Enter': {
+        // Enter keeps its usual job on links and buttons, except the card
+        // title button, which only selects the card it belongs to.
+        const native = target?.closest('a, button, summary');
+        if (native && !native.classList.contains('dcard__title-btn')) return;
+        e.preventDefault();
+        actions?.confirm();
+        return;
+      }
+      case 'e':
+      case 'E':
+        e.preventDefault();
+        actions?.correct();
+        return;
+      case 'm':
+      case 'M':
+        e.preventDefault();
+        actions?.markMissing();
+        return;
+    }
+  };
+
   /* ---------- confirmation after saving ---------- */
   if (saved) {
+    /* The next task a reviewer can pick up: oldest first, not held by someone else. */
+    const nextTask = [...tasks]
+      .filter((t) => t.id !== taskId && (!t.claimedBy || t.claimedBy.name === user?.name))
+      .sort((a, b) => b.ageMinutes - a.ageMinutes)[0];
     return (
       <div className="page">
         <div className="saved-panel" role="status">
@@ -167,14 +259,25 @@ export function ReviewTask() {
             <strong>{friendlyLabel(saved.result)}</strong>.
           </p>
           <p className="saved-panel__note muted">
-            Your review is complete. You can view the updated email or choose another review when you’re ready.
+            {nextTask
+              ? `${tasks.length} review${tasks.length === 1 ? '' : 's'} still waiting. Press Enter to open the next one.`
+              : 'That was the last review waiting. You can view the updated email or return to the queue.'}
           </p>
           <div className="saved-panel__actions">
-            <Link to={`/cases/${saved.caseId}`} className="btn btn--primary btn--md">
+            {nextTask && (
+              <Link to={`/review/${nextTask.id}`} className="btn btn--primary btn--md" ref={focusOnMount}>
+                <span className="btn__label">Next review</span>
+                <span className="btn__icon" aria-hidden="true">
+                  <ArrowRight size={15} />
+                </span>
+              </Link>
+            )}
+            <Link
+              to={`/cases/${saved.caseId}`}
+              className={`btn ${nextTask ? 'btn--secondary' : 'btn--primary'} btn--md`}
+              ref={nextTask ? undefined : focusOnMount}
+            >
               <span className="btn__label">View case {saved.caseId}</span>
-              <span className="btn__icon" aria-hidden="true">
-                <ArrowRight size={15} />
-              </span>
             </Link>
             <Link to="/review" className="btn btn--secondary btn--md">
               <span className="btn__label">Back to reviews</span>
@@ -351,6 +454,10 @@ export function ReviewTask() {
             onDecide={decide}
             onClear={() => clearDecision(q.id)}
             onHoverCandidate={setHovered}
+            register={(api) => {
+              if (api) cardActions.current.set(q.id, api);
+              else cardActions.current.delete(q.id);
+            }}
           />
         ))}
       </div>
@@ -377,7 +484,17 @@ export function ReviewTask() {
         </span>
       </div>
 
-      <div className="review-guidance"><strong>Check each highlighted detail, then save.</strong><span>Confirm a correct value, correct a mistake, or mark information as missing. Your changes are recorded when you select “Save review”.</span><Link to="/help">Review guide</Link></div>
+      <div className="review-guidance"><strong>Check each highlighted detail, then save.</strong><span>Confirm a correct value, correct a mistake, or mark information as missing. Your changes are recorded when you select “Save review”.</span><Link to="/help">Review guide</Link>
+        {editable && (
+          <p className="rt__keys" aria-label="Keyboard shortcuts">
+            <span><kbd>J</kbd><kbd>K</kbd> move</span>
+            <span><kbd>Enter</kbd> confirm</span>
+            <span><kbd>E</kbd> correct</span>
+            <span><kbd>M</kbd> missing</span>
+            <span><kbd>{IS_MAC ? '⌘' : 'Ctrl'}</kbd><kbd>S</kbd> save</span>
+          </p>
+        )}
+      </div>
 
       {/* narrow screens: one pane at a time */}
       <div className="rt__tabs">

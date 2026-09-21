@@ -254,8 +254,7 @@
   margin-bottom: var(--s-3);
 }
 
-.dash__dlq,
-.batch__dlq {
+.dash__dlq {
   display: flex;
   align-items: flex-start;
   gap: var(--s-2);
@@ -267,6 +266,18 @@
   font-size: var(--t-micro);
   color: var(--ink);
   line-height: 1.45;
+}
+
+/* On Email imports the page banner already carries the warning, so the
+   per-import detail is a quiet note under the counts, not a second amber box. */
+.batch__dlq {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+  margin-top: var(--s-3);
+  font-size: var(--t-small);
+  color: var(--ink-2);
+  line-height: 1.5;
 }
 .dash__dlq svg,
 .batch__dlq svg {
@@ -408,6 +419,13 @@
   gap: var(--s-2);
   font-size: var(--t-micro);
   min-width: 0;
+}
+
+/* References are read aloud and copied, so they never split at the hyphen;
+   the subject beside them is the part that gives way. */
+.rt__top-ident > .mono {
+  flex: none;
+  white-space: nowrap;
 }
 
 .rt__top-subject {
@@ -931,6 +949,8 @@
   font-weight: 600;
 }
 
+/* Floats over the form while it is pinned, so it needs to read as a bar
+   sitting above the page rather than as the end of the last card. */
 .cfg__foot {
   display: flex;
   align-items: center;
@@ -941,8 +961,15 @@
   background: var(--surface);
   border: 1px solid var(--rule);
   border-radius: var(--r-2);
+  box-shadow: 0 6px 22px rgba(16, 32, 27, 0.13);
   position: sticky;
   bottom: var(--s-3);
+  z-index: 3;
+}
+
+/* Clearance so the last field can always be scrolled clear of the bar. */
+.page.cfg-page {
+  padding-bottom: 84px;
 }
 
 /* ================================================================
@@ -1267,9 +1294,9 @@
     position: absolute;
     top: 2px;
     right: 6px;
-    font-size: 9px;
-    min-width: 14px;
-    line-height: 13px;
+    font-size: 11px;
+    min-width: 16px;
+    line-height: 15px;
     padding: 0 3px;
   }
   .rail__group-title {
@@ -1445,7 +1472,7 @@
     border: 0;
     border-top: 2px solid transparent;
     color: var(--ink-3);
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 600;
     text-decoration: none;
     position: relative;
@@ -1463,9 +1490,9 @@
     right: 22%;
     background: var(--marker);
     color: var(--marker-ink);
-    font-size: 9px;
+    font-size: 11px;
     font-weight: 700;
-    line-height: 13px;
+    line-height: 15px;
     min-width: 14px;
     text-align: center;
     border-radius: var(--r-1);

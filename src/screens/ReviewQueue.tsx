@@ -67,7 +67,7 @@ export function ReviewQueue() {
             title={tasks.length === 0 ? 'The review queue is empty' : 'No tasks match this filter'}
             body={
               tasks.length === 0
-                ? 'Every value SDVS was unsure about has been confirmed or corrected. New tasks appear here as batches run.'
+                ? 'Every value Tidemark was unsure about has been confirmed or corrected. New tasks appear here as batches run.'
                 : 'No task has that status right now. Clear the filter to see the whole queue.'
             }
             action={

@@ -1,5 +1,5 @@
 /* ============================================================
-   SDVS design tokens
+   Tidemark design tokens
    Cool paper, deep steel blue, highlighter yellow for attention.
    Light palette is defined on bare :root. Dark redefines only the
    tokens, both under prefers-color-scheme (guarded so an explicit

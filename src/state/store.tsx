@@ -379,7 +379,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 const from = category;
                 category = d.value as Category;
                 categoryConfidence = 1;
-                categoryReason = `Corrected by ${actor} during review. SDVS had proposed ${from} at confidence ${q.confidence.toFixed(2)}.`;
+                categoryReason = `Corrected by ${actor} during review. Tidemark had proposed ${from} at confidence ${q.confidence.toFixed(2)}.`;
                 history.push({
                   id: nextId('rh'),
                   at: stamp(),
@@ -686,7 +686,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 received: Math.min(b.expected, b.received + Math.ceil((b.expected - b.received) / 2)),
                 accepted: Math.min(b.expected, b.accepted + Math.ceil((b.expected - b.received) / 2)),
                 deadLetterCount: 0,
-                deadLetterNote: 'The dead-letter queue was drained into this reprocess run.',
+                deadLetterNote: 'The emails that could not arrive were included in this new attempt.',
               }
             : b,
         ),
@@ -697,12 +697,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         action: 'Batch reprocessed',
         target: batchId,
         ip: '203.0.113.19',
-        detail: { Scope: 'Rejected records and the dead-letter queue' },
+        detail: { Scope: 'Rejected emails and emails that could not arrive' },
       });
       pushToast({
         tone: 'success',
-        title: 'Batch reprocessing',
-        body: `${batchId} is running again. The dead-letter queue was drained into this run.`,
+        title: 'Trying the import again',
+        body: `${batchId} is running again, including the emails that could not arrive.`,
       });
     },
     [logAudit, pushToast, user],
@@ -721,7 +721,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         score: '',
         notes: '',
         filename:
-          format === 'CSV' ? `sdvs-cases-2026-09-21.csv` : `sdvs-submission-2026-09-21.json`,
+          format === 'CSV' ? `tidemark-cases-2026-09-21.csv` : `tidemark-submission-2026-09-21.json`,
       };
       setExportsList((prev) => [record, ...prev]);
       logAudit({

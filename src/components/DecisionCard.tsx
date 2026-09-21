@@ -13,6 +13,13 @@ import { Button } from './Button';
 import { ConfidenceIndicator } from './ConfidenceIndicator';
 import { ReasonCodeTag } from './chips';
 
+/* What the review page can ask the selected card to do from the keyboard. */
+export interface DecisionCardActions {
+  confirm: () => void;
+  correct: () => void;
+  markMissing: () => void;
+}
+
 const CATEGORY_CHOICES = [
   'Document comparison request',
   'New SI request',
@@ -32,6 +39,7 @@ export function DecisionCard({
   onDecide,
   onClear,
   onHoverCandidate,
+  register,
 }: {
   question: DecisionQuestion;
   index: number;
@@ -43,6 +51,7 @@ export function DecisionCard({
   onDecide: (d: Decision) => void;
   onClear: () => void;
   onHoverCandidate?: (c: Candidate | null) => void;
+  register?: (actions: DecisionCardActions | null) => void;
 }) {
   const [mode, setMode] = useState<'idle' | 'correcting'>('idle');
   const [draft, setDraft] = useState(question.proposedValue ?? '');
@@ -74,6 +83,35 @@ export function DecisionCard({
   }
 
   const decided = Boolean(decision);
+  const canConfirm = !disabled && !(Boolean(question.candidates?.length) && !pickedCandidate && !question.proposedValue);
+
+  function confirm() {
+    if (decided || mode !== 'idle' || !canConfirm) return;
+    const cand = question.candidates?.find((c) => c.id === pickedCandidate);
+    onDecide({
+      questionId: question.id,
+      kind: 'Confirm',
+      value: cand ? cand.value : question.proposedValue,
+      candidateId: cand?.id,
+    });
+  }
+
+  function startCorrecting() {
+    if (decided || disabled || mode !== 'idle') return;
+    setDraft(question.proposedValue ?? '');
+    setMode('correcting');
+  }
+
+  function markMissing() {
+    if (decided || disabled || mode !== 'idle') return;
+    onDecide({ questionId: question.id, kind: 'Mark missing', value: null });
+  }
+
+  /* Re-registered every render so the page always calls the current state. */
+  useEffect(() => {
+    register?.({ confirm, correct: startCorrecting, markMissing });
+    return () => register?.(null);
+  });
 
   return (
     <article
@@ -261,28 +299,13 @@ export function DecisionCard({
               size="sm"
               variant="primary"
               icon={<Check size={14} />}
-              disabled={disabled || (Boolean(question.candidates?.length) && !pickedCandidate && !question.proposedValue)}
-              onClick={() => {
-                const cand = question.candidates?.find((c) => c.id === pickedCandidate);
-                onDecide({
-                  questionId: question.id,
-                  kind: 'Confirm',
-                  value: cand ? cand.value : question.proposedValue,
-                  candidateId: cand?.id,
-                });
-              }}
+              disabled={!canConfirm}
+              onClick={confirm}
+              aria-keyshortcuts="Enter"
             >
               Confirm
             </Button>
-            <Button
-              size="sm"
-              icon={<Pencil size={14} />}
-              disabled={disabled}
-              onClick={() => {
-                setDraft(question.proposedValue ?? '');
-                setMode('correcting');
-              }}
-            >
+            <Button size="sm" icon={<Pencil size={14} />} disabled={disabled} onClick={startCorrecting} aria-keyshortcuts="E">
               Correct
             </Button>
             <Button
@@ -290,7 +313,8 @@ export function DecisionCard({
               variant="ghost"
               icon={<CirclePlus size={14} className="rot45" />}
               disabled={disabled}
-              onClick={() => onDecide({ questionId: question.id, kind: 'Mark missing', value: null })}
+              onClick={markMissing}
+              aria-keyshortcuts="M"
             >
               Mark missing
             </Button>

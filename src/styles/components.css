@@ -1,5 +1,5 @@
 /* ============================================================
-   SDVS components
+   Tidemark components
    ============================================================ */
 
 /* ---------------- animations ---------------- */
@@ -422,9 +422,11 @@
 .usermenu__head-name {
   font-weight: 600;
 }
+/* Long addresses wrap inside the panel instead of running off its edge. */
 .usermenu__head-mail {
   font-size: var(--t-micro);
   color: var(--ink-3);
+  overflow-wrap: anywhere;
 }
 .usermenu__head-role {
   font-size: var(--t-micro);
@@ -836,6 +838,33 @@ select.input,
   background-repeat: no-repeat;
 }
 
+/* Date inputs keep the browser's picker but wear the same chrome as the
+   selects beside them: body type, muted when empty, and a tinted glyph in
+   place of the platform's own calendar icon. */
+.input--date {
+  font-family: var(--font-body);
+  color: var(--ink);
+  min-width: 150px;
+}
+
+.input--date.is-empty {
+  color: var(--ink-3);
+}
+
+.input--date::-webkit-calendar-picker-indicator {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  cursor: pointer;
+  background: var(--ink-3);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='18' rx='2'/%3E%3Cpath d='M16 2v4M8 2v4M3 10h18'/%3E%3C/svg%3E") center / 16px no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='18' rx='2'/%3E%3Cpath d='M16 2v4M8 2v4M3 10h18'/%3E%3C/svg%3E") center / 16px no-repeat;
+}
+
+.input--date:hover::-webkit-calendar-picker-indicator {
+  background: var(--ink);
+}
+
 .field-error {
   font-size: var(--t-micro);
   color: var(--mismatch-ink);
@@ -1033,11 +1062,11 @@ select.input,
 }
 
 .col-id {
-  width: 92px;
+  width: 80px;
 }
+/* Date and time may sit on two lines when the table is tight. */
 .col-time {
-  width: 132px;
-  white-space: nowrap;
+  width: 98px;
 }
 .col-age {
   width: 104px;
@@ -1054,14 +1083,14 @@ select.input,
 }
 
 .cell-subject {
-  min-width: 220px;
+  min-width: 180px;
   max-width: 420px;
 }
 .cell-subject a {
   font-weight: 500;
 }
 .cell-sender {
-  max-width: 210px;
+  max-width: 138px;
   font-size: var(--t-micro);
   color: var(--ink-2);
   white-space: nowrap;
@@ -1142,6 +1171,7 @@ select.input,
   line-height: 16px;
   white-space: nowrap;
   max-width: 100%;
+  min-width: 0;
 }
 
 .chip__icon {
@@ -1149,7 +1179,22 @@ select.input,
   flex: none;
 }
 
+/* The label, not the cell around it, decides where a long chip ends. */
 .chip__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* In a table a chip takes a second line when its column is squeezed, rather
+   than trimming its label or pushing the table wider than its panel. A column
+   never squeezes below the chip's longest word, so nothing spills out. */
+.table .chip {
+  white-space: normal;
+}
+
+.table .chip__label {
+  min-width: min-content;
   overflow: visible;
 }
 
@@ -2457,7 +2502,11 @@ select.input,
   line-height: 1.55;
 }
 
-.empty .btn {
+.empty__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--s-2);
   margin-top: var(--s-2);
 }
 

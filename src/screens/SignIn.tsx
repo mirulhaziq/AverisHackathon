@@ -3,7 +3,8 @@
    ============================================================ */
 
 import { useState } from 'react';
-import { Anchor, ArrowRight } from 'lucide-react';
+import { ArrowRight, Check } from 'lucide-react';
+import { TideMark, TideChart } from '../components/Brand';
 import { Button } from '../components/Button';
 import { Banner } from '../components/feedback';
 import { useStore } from '../state/store';
@@ -26,19 +27,28 @@ export function SignIn() {
 
   return (
     <div className="signin">
+      <section className="signin__story" aria-label="About Tidemark">
+        <div className="story-brand"><TideMark /><span>tidemark<span className="brand-period">.</span></span></div>
+        <div className="story-copy"><p className="eyebrow">A CLEARER COURSE FOR YOUR CARGO</p><h1>Every detail.<br />In the <em>clear.</em></h1><p>From shipping instructions to bills of lading.{' '}<br />Find the differences before they go the distance.</p></div>
+        <div className="story-chart"><TideChart /><span className="chart-caption mono">DOCUMENT TO DEPARTURE / A CLEARER COURSE</span></div>
+        <div className="story-footer"><span>Clear documents. Confident departures.</span><span className="mono">EST. 2026</span></div>
+      </section>
+      <div className="signin__entry">
+      <div className="signin__entry-top"><span>THE SHIPPING DOCUMENT WORKSPACE</span><span className="demo-tag">DEMO EDITION</span></div>
       <div className="signin__panel">
         <div className="signin__brand">
           <span className="signin__mark" aria-hidden="true">
-            <Anchor size={22} />
+            <TideMark />
           </span>
           <div>
-            <h1 className="signin__name">SDVS</h1>
-            <p className="signin__tagline">Shipping Document Verification System</p>
+            <span className="signin__name">tidemark.</span>
+            <p className="signin__tagline">Document intelligence</p>
           </div>
         </div>
 
-        <div><p className="eyebrow">WELCOME TO YOUR WORKSPACE</p><h2 className="signin__heading">Shipping checks,<br />made clearer.</h2></div>
-        <p className="signin__intro">See which shipping documents match, find differences, and check details that need a person’s attention.</p>
+        <div><p className="eyebrow">WELCOME ABOARD</p><h2 className="signin__heading">Your next departure<br />starts with clarity.</h2></div>
+        <p className="signin__intro">One calm workspace to compare shipping documents, resolve differences, and keep your cargo moving.</p>
+        <div className="signin__benefits"><span><Check size={15} /> Compare the details</span><span><Check size={15} /> Review with confidence</span></div>
 
         {expired && (
           <Banner tone="error" title="Your session expired">
@@ -76,7 +86,8 @@ export function SignIn() {
         </details>
       </div>
 
-      <p className="signin__foot mono">SDVS 1.0 — operations build 2026.09.21</p>
+      <p className="signin__foot">Built for the people behind every shipment.<span className="mono">TIDEMARK / 1.0</span></p>
+      </div>
     </div>
   );
 }

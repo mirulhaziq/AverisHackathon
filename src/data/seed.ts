@@ -1921,7 +1921,7 @@ export const SEED_BATCHES: ImportBatch[] = [
     state: 'Running',
     deadLetterCount: 2,
     deadLetterNote:
-      '2 messages are in the dead-letter queue after 5 delivery attempts each. They are held for 14 days and can be reprocessed from here.',
+      '2 emails could not arrive after 5 attempts each. They are held for 14 days and can be tried again from here.',
     rejectedRecords: [
       {
         id: 'rr-1',
@@ -1960,7 +1960,7 @@ export const SEED_BATCHES: ImportBatch[] = [
     rejected: 4,
     state: 'Complete with rejects',
     deadLetterCount: 1,
-    deadLetterNote: '1 message is in the dead-letter queue after 5 delivery attempts.',
+    deadLetterNote: '1 email could not arrive after 5 attempts.',
     rejectedRecords: [
       {
         id: 'rr-4',
@@ -2021,7 +2021,7 @@ export const SEED_BATCHES: ImportBatch[] = [
     state: 'Stalled',
     deadLetterCount: 4,
     deadLetterNote:
-      '4 messages are in the dead-letter queue. The archive connector stopped responding at 09:41 and the batch has not advanced since.',
+      '4 emails could not arrive. The archive connection stopped responding at 09:41 and this import has not moved since.',
     rejectedRecords: [
       {
         id: 'rr-8',
@@ -2050,7 +2050,7 @@ export const SEED_EXPORTS: ExportRecord[] = [
     score: '0.942',
     notes:
       'Two disagreements with the reference set, both on notify party where the reference kept the care-of line and we dropped it.',
-    filename: 'sdvs-submission-2026-09-20.json',
+    filename: 'tidemark-submission-2026-09-20.json',
   },
   {
     id: 'X-0042',
@@ -2061,7 +2061,7 @@ export const SEED_EXPORTS: ExportRecord[] = [
     pendingReviewCount: 2,
     score: '0.917',
     notes: 'Exported with 2 cases still waiting for review, so those rows carry Needs review.',
-    filename: 'sdvs-cases-2026-09-20.csv',
+    filename: 'tidemark-cases-2026-09-20.csv',
   },
   {
     id: 'X-0041',
@@ -2073,7 +2073,7 @@ export const SEED_EXPORTS: ExportRecord[] = [
     score: '0.889',
     notes:
       'Port alias list was short at this point, which cost us four port of discharge rows. Aliases added afterwards.',
-    filename: 'sdvs-submission-2026-09-19.json',
+    filename: 'tidemark-submission-2026-09-19.json',
   },
 ];
 
@@ -2221,7 +2221,7 @@ export const SEED_AUDIT: AuditEntry[] = [
       Format: 'Submission JSON',
       Cases: '116',
       'Waiting for review': '0',
-      File: 'sdvs-submission-2026-09-20.json',
+      File: 'tidemark-submission-2026-09-20.json',
     },
   },
   {

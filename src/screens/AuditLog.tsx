@@ -3,13 +3,13 @@
    ============================================================ */
 
 import { useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight, History } from 'lucide-react';
+import { ChevronDown, ChevronRight, History, LockKeyhole } from 'lucide-react';
 import { EmptyState } from '../components/feedback';
 import { FilterBar, SearchInput, Select } from '../components/FilterBar';
 import { useStore } from '../state/store';
 
 export function AuditLog() {
-  const { audit, can } = useStore();
+  const { audit, can, switchRole } = useStore();
   const [actor, setActor] = useState<string | 'all'>('all');
   const [action, setAction] = useState<string | 'all'>('all');
   const [from, setFrom] = useState('');
@@ -39,11 +39,15 @@ export function AuditLog() {
   if (!can('viewAudit')) {
     return (
       <div className="page">
-        <EmptyState
-          title="The audit log is for admins"
-          body="Your role does not include the audit log. Ask an admin if you need to trace a change."
-          action={{ label: 'Back to the dashboard', to: '/dashboard' }}
-        />
+        <section className="panel">
+          <EmptyState
+            icon={<LockKeyhole size={22} />}
+            title="Activity history is for admins"
+            body="Your role does not include activity history. Ask an admin if you need to trace a change, or preview the admin role in this demo."
+            action={{ label: 'Preview as Admin', onClick: () => switchRole('Admin') }}
+            secondaryAction={{ label: 'Back to the overview', to: '/dashboard' }}
+          />
+        </section>
       </div>
     );
   }
@@ -76,7 +80,7 @@ export function AuditLog() {
         onClear={clearAll}
         resultLabel={`${rows.length} of ${audit.length} entr${audit.length === 1 ? 'y' : 'ies'}`}
       >
-        <SearchInput value={q} onChange={setQ} label="Search the audit log" placeholder="Search target or detail" width={240} />
+        <SearchInput value={q} onChange={setQ} label="Search activity history" placeholder="Search target or detail" width={240} />
         <Select label="Actor" value={actor} options={actors} onChange={setActor} width={170} />
         <Select label="Action" value={action} options={actions} onChange={setAction} width={190} />
         <div className="select-field">
@@ -86,7 +90,7 @@ export function AuditLog() {
           <input
             id="audit-from"
             type="date"
-            className="input"
+            className={`input input--date${from ? '' : ' is-empty'}`}
             value={from}
             max={to || undefined}
             onChange={(e) => setFrom(e.target.value)}
@@ -99,7 +103,7 @@ export function AuditLog() {
           <input
             id="audit-to"
             type="date"
-            className="input"
+            className={`input input--date${to ? '' : ' is-empty'}`}
             value={to}
             min={from || undefined}
             onChange={(e) => setTo(e.target.value)}

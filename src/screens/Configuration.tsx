@@ -3,7 +3,7 @@
    ============================================================ */
 
 import { useState } from 'react';
-import { Plus, Save, Trash2, Undo2 } from 'lucide-react';
+import { LockKeyhole, Plus, Save, Trash2, Undo2 } from 'lucide-react';
 import { Button, IconButton } from '../components/Button';
 import { Banner, EmptyState } from '../components/feedback';
 import { useStore } from '../state/store';
@@ -42,7 +42,7 @@ const THRESHOLD_FIELDS: Array<{
   {
     key: 'reviewConfidence',
     label: 'Review confidence',
-    help: 'Below this, SDVS creates a review task instead of using the value.',
+    help: 'Below this, Tidemark creates a review task instead of using the value.',
     min: 0,
     max: 1,
     step: 0.01,
@@ -84,7 +84,7 @@ const THRESHOLD_FIELDS: Array<{
 ];
 
 export function Configuration() {
-  const { thresholds, synonyms, portAliases, suffixes, mapping, saveConfig, can } = useStore();
+  const { thresholds, synonyms, portAliases, suffixes, mapping, saveConfig, can, switchRole } = useStore();
 
   const [t, setT] = useState<ConfigThresholds>({ ...thresholds });
   const [sy, setSy] = useState<SynonymRow[]>([...synonyms]);
@@ -96,11 +96,15 @@ export function Configuration() {
   if (!can('configure')) {
     return (
       <div className="page">
-        <EmptyState
-          title="Configuration is for admins"
-          body="Your role does not include configuration. Ask an admin to change thresholds, synonyms or the export mapping."
-          action={{ label: 'Back to the dashboard', to: '/dashboard' }}
-        />
+        <section className="panel">
+          <EmptyState
+            icon={<LockKeyhole size={22} />}
+            title="Settings are for admins"
+            body="Your role does not include settings. Ask an admin to change how Tidemark reads and compares documents, or preview the admin role in this demo."
+            action={{ label: 'Preview as Admin', onClick: () => switchRole('Admin') }}
+            secondaryAction={{ label: 'Back to the overview', to: '/dashboard' }}
+          />
+        </section>
       </div>
     );
   }
@@ -137,24 +141,16 @@ export function Configuration() {
   }
 
   return (
-    <div className="page">
+    <div className="page cfg-page">
+      {/* Saving lives in the bar at the foot of the page, which stays in view
+          while the form is scrolled, so the header carries no second copy. */}
       <header className="page__head">
         <div>
-          <h2 className="page__title">How SDVS reads and compares</h2>
+          <h2 className="page__title">How Tidemark reads and compares</h2>
           <p className="page__sub">
             These settings apply to cases processed from the moment they are saved. Cases already finished are not
             re-run.
           </p>
-        </div>
-        <div className="page__head-actions">
-          {dirty && (
-            <Button icon={<Undo2 size={15} />} onClick={discard}>
-              Discard changes
-            </Button>
-          )}
-          <Button variant="primary" icon={<Save size={15} />} onClick={save} disabled={!dirty}>
-            Save changes
-          </Button>
         </div>
       </header>
 

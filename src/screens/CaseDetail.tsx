@@ -187,7 +187,7 @@ export function CaseDetail() {
               {needsReview.length} field{needsReview.length === 1 ? ' needs' : 's need'} review
             </p>
             <p className="result-banner__body">
-              SDVS is not sure of {needsReview.map((m) => FIELD_LABELS[m.field].toLowerCase()).join(', ')}, so it
+              Tidemark is not sure of {needsReview.map((m) => FIELD_LABELS[m.field].toLowerCase()).join(', ')}, so it
               has not guessed. The case resumes once a reviewer confirms or corrects the values.
             </p>
           </div>
@@ -224,7 +224,7 @@ export function CaseDetail() {
                   ? 'This email has no documents attached, so there was nothing to read. Ask the sender to resend with the shipping instruction and the draft bill of lading attached.'
                   : c.failure
                     ? 'The documents could not be read, so no field was compared. Fix the cause above, then retry the case.'
-                    : `SDVS only compares fields for a document comparison request. This email was classified as ${c.category.toLowerCase()}, so no comparison was run.`
+                    : `Tidemark only compares fields for a document comparison request. This email was classified as ${c.category.toLowerCase()}, so no comparison was run.`
               }
               action={
                 c.attachments.length === 0 && task && can('resolveTask')

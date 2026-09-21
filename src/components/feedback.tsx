@@ -11,15 +11,40 @@ import { Button, IconButton } from './Button';
 
 /* ---------- empty state ---------- */
 
+interface EmptyAction {
+  label: string;
+  onClick?: () => void;
+  to?: string;
+}
+
+function EmptyActionControl({ action, primary }: { action: EmptyAction; primary?: boolean }) {
+  if (action.to) {
+    return (
+      <Link className={`btn ${primary ? 'btn--primary' : 'btn--secondary'} btn--md`} to={action.to}>
+        <span className="btn__label">{action.label}</span>
+      </Link>
+    );
+  }
+  return (
+    <Button variant={primary ? 'primary' : 'secondary'} onClick={action.onClick}>
+      {action.label}
+    </Button>
+  );
+}
+
+/* `action` is the way forward; `secondaryAction` is the way back. When both
+   are given the first is drawn as the primary button. */
 export function EmptyState({
   title,
   body,
   action,
+  secondaryAction,
   icon,
 }: {
   title: string;
   body: string;
-  action?: { label: string; onClick?: () => void; to?: string };
+  action?: EmptyAction;
+  secondaryAction?: EmptyAction;
   icon?: ReactNode;
 }) {
   return (
@@ -31,14 +56,12 @@ export function EmptyState({
       )}
       <h3 className="empty__title">{title}</h3>
       <p className="empty__body">{body}</p>
-      {action &&
-        (action.to ? (
-          <Link className="btn btn--secondary btn--md" to={action.to}>
-            <span className="btn__label">{action.label}</span>
-          </Link>
-        ) : (
-          <Button onClick={action.onClick}>{action.label}</Button>
-        ))}
+      {(action || secondaryAction) && (
+        <div className="empty__actions">
+          {action && <EmptyActionControl action={action} primary={!!secondaryAction} />}
+          {secondaryAction && <EmptyActionControl action={secondaryAction} />}
+        </div>
+      )}
     </div>
   );
 }
