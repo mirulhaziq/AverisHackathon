@@ -61,5 +61,6 @@ ground_truth.json
 score*.py
 __pycache__/
 
-# organizers' dataset bundle — never ship this to a public repo
+# organizers' dataset bundle and scoring server — never ship these to a public repo
 /sdoc-hackathon-bundle/
+/sdoc-hackathon-docker/

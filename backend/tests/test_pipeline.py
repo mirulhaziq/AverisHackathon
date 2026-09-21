@@ -125,10 +125,24 @@ def test_classify_email_parses_llm_json(monkeypatch):
 
 # ---------- run (orchestration) ----------
 def test_assign_roles_needs_exactly_one_each():
-    st_files = {"attachments/e/x_SI.txt": b"", "attachments/e/x_BL.txt": b""}
-    assert _assign_roles(None, list(st_files)) == ("attachments/e/x_SI.txt", "attachments/e/x_BL.txt")
-    assert _assign_roles(None, ["attachments/e/x_SI.txt"]) is None
-    assert _assign_roles(None, ["attachments/e/x_SI.txt", "attachments/e/y_SI.txt"]) is None
+    docs = {"a": Document("a", "text", text="SHIPPING INSTRUCTION\n"),
+           "b": Document("b", "text", text="DRAFT BILL OF LADING\n")}
+    assert _assign_roles(docs) == ("a", "b")
+    assert _assign_roles({"a": docs["a"]}) is None
+    two_si = {"a": docs["a"], "c": Document("c", "text", text="SHIPPING INSTRUCTION\n")}
+    assert _assign_roles(two_si) is None
+
+
+def test_assign_roles_ignores_filename_and_trusts_content():
+    """Regression test for the real dataset bug: a file literally named
+    '..._BL.txt' whose content is a commercial invoice must NOT be paired in
+    as the BL - this is the wrong_doc_type edge case the filename-only
+    version of _assign_roles missed entirely (0/5 on the real dataset)."""
+    docs = {
+        "attachments/email_501_SI.txt": Document("x_SI.txt", "text", text="SHIPPING INSTRUCTION\n"),
+        "attachments/email_501_BL.txt": Document("x_BL.txt", "text", text="COMMERCIAL INVOICE\n"),
+    }
+    assert _assign_roles(docs) is None  # exactly one SI, zero BL - not a false match
 
 
 def test_process_email_non_comparison_category_short_circuits(monkeypatch):
@@ -155,13 +169,17 @@ def test_extraction_and_comparison_over_real_bl_comparison_emails():
     outcomes = {"OK": 0, "MISMATCH": 0, "NEEDS_REVIEW": 0}
     for email in st.emails():
         atts = email.get("attachments") or []
-        roles = _assign_roles(st, atts)
-        if roles is None:
+        if len(atts) < 2:
             continue
-        si_doc, bl_doc = read_attachment(st, roles[0]), read_attachment(st, roles[1])
-        if si_doc.unreadable or bl_doc.unreadable:
+        docs = {p: read_attachment(st, p) for p in atts}
+        if any(d.unreadable for d in docs.values()):
             outcomes["NEEDS_REVIEW"] += 1
             continue
+        roles = _assign_roles(docs)
+        if roles is None:
+            outcomes["NEEDS_REVIEW"] += 1
+            continue
+        si_doc, bl_doc = docs[roles[0]], docs[roles[1]]
         comparisons, defects = compare_fields(extract_fields(si_doc), extract_fields(bl_doc))
         if has_uncertain_field(comparisons):
             outcomes["NEEDS_REVIEW"] += 1
