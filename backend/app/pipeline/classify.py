@@ -35,6 +35,14 @@ The subject line is a HINT ONLY, not proof — do not decide from it alone. Weig
 text and the attachment file names together. An email whose subject looks like a comparison \
 request but has no SI/BL-shaped attachments is probably not BL_COMPARISON.
 
+An email that asks to confirm/check the BL, and attaches an SI plus a second document, is \
+still BL_COMPARISON even if the body itself says the second document is actually an invoice, \
+packing list, certificate of origin, or any other non-BL document. Do NOT reclassify it as \
+GENERAL just because the real BL is missing or the wrong file was sent — that is a document-\
+type problem for the pipeline to catch later, not a reason to skip comparison here. The intent \
+of the email (get the shipment documents checked) is what decides the category, not whether \
+every attachment turned out to be the right type.
+
 Email:
 <subject>{subject}</subject>
 <sender>{sender}</sender>
