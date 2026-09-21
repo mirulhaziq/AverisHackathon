@@ -27,7 +27,13 @@ function loadText(emailId: string, index: number): Promise<WireAttachmentText> {
   return p;
 }
 
-const squash = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
+/* Compare on letters and digits only: the pipeline stores PDF evidence as
+   "Consignee: X" while the text layer reads "Consignee X". */
+const squash = (s: string) =>
+  s
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
 
 /** Index of the line the evidence snippet came from, or -1. */
 function findLine(lines: string[], snippet: string | null | undefined): number {
@@ -142,7 +148,12 @@ export function LiveDocument({
 
       {mode === 'original' && attachment.fileUrl ? (
         <div className="viewer__stage viewer__stage--frame">
-          <iframe className="viewer__frame" src={attachment.fileUrl} title={`${heading}: ${attachment.filename}`} />
+          <iframe
+            className="viewer__frame"
+            // fit to width, no thumbnail sidebar - the panel is only half the page wide
+            src={isPdf ? `${attachment.fileUrl}#navpanes=0&view=FitH` : attachment.fileUrl}
+            title={`${heading}: ${attachment.filename}`}
+          />
         </div>
       ) : (
         <div className="viewer__stage" tabIndex={0} aria-label={`${heading} text`}>

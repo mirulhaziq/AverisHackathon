@@ -42,6 +42,9 @@ export function CaseDetail() {
     if (caseId) void loadCaseDetail(caseId);
   }, [caseId, loadCaseDetail]);
 
+  // the page is reused across cases, so a field picked on the last one must not carry over
+  useEffect(() => setSelectedField(null), [caseId]);
+
   if (!c) {
     return (
       <div className="page">
