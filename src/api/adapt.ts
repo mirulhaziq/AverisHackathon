@@ -21,6 +21,7 @@ import type {
   WireResult,
   WireResultLight,
 } from './client';
+import { attachmentFileUrl } from './client';
 import type {
   Attachment,
   CaseResult,
@@ -114,7 +115,7 @@ function fileTypeFor(path: string): Attachment['fileType'] {
   return 'TXT';
 }
 
-function mapAttachment(path: string): Attachment {
+function mapAttachment(path: string, source?: { emailId: string; index: number }): Attachment {
   const name = basename(path).toUpperCase();
   const kind: Attachment['kind'] = name.includes('_SI') ? 'SI' : name.includes('_BL') ? 'BL' : 'Other';
   return {
@@ -124,6 +125,7 @@ function mapAttachment(path: string): Attachment {
     sizeLabel: '—',
     fileType: fileTypeFor(path),
     pageCount: 1,
+    ...(source && { source, fileUrl: attachmentFileUrl(source.emailId, source.index) }),
   };
 }
 
@@ -243,7 +245,7 @@ export function buildFullCase(email: WireEmail, result: WireResult): EmailCase {
     result: mapResult(result),
     batchId: null,
     body: email.body,
-    attachments: email.attachments.map(mapAttachment),
+    attachments: email.attachments.map((p, index) => mapAttachment(p, { emailId: email.email_id, index })),
     comparison: result.comparisons.map(mapComparisonRow),
     timeline: mapTimeline(result),
     reviewHistory: mapHistory(result),

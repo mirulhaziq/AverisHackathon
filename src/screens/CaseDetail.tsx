@@ -20,17 +20,21 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Button } from '../components/Button';
 import { ComparisonTable } from '../components/ComparisonTable';
 import { ConfidenceIndicator } from '../components/ConfidenceIndicator';
+import { EvidenceViewer } from '../components/EvidenceViewer';
+import { regionFor } from '../data/documents';
+import { DOCUMENTS } from '../data/seed';
 import { Banner, EmptyState } from '../components/feedback';
 import { CategoryChip, ResultChip, StatusChip } from '../components/chips';
 import { TabPanel, Tabs } from '../components/Tabs';
 import { useStore } from '../state/store';
-import { FIELD_LABELS, type EmailCase, type TimelineStep } from '../types';
+import { FIELD_LABELS, type Attachment, type EmailCase, type FieldKey, type TimelineStep } from '../types';
 
 export function CaseDetail() {
   const { caseId } = useParams();
   const navigate = useNavigate();
   const { getCase, can, retryCase, taskForCase, thresholds, loadCaseDetail } = useStore();
   const [tab, setTab] = useState('documents');
+  const [selectedField, setSelectedField] = useState<FieldKey | null>(null);
 
   const c = caseId ? getCase(caseId) : undefined;
 
@@ -238,9 +242,15 @@ export function CaseDetail() {
             />
           </div>
         ) : (
-          <ComparisonTable rows={c.comparison} />
+          <ComparisonTable
+            rows={c.comparison}
+            selectedField={selectedField}
+            onFieldClick={(f) => setSelectedField((cur) => (cur === f ? null : f))}
+          />
         )}
       </section>
+
+      {c.attachments.length > 0 && <SourceDocuments c={c} field={selectedField} />}
 
       {/* ---------- tabs ---------- */}
       <section className="panel panel--tabs">
@@ -279,6 +289,52 @@ export function CaseDetail() {
   );
 }
 
+/* ---------- source documents, side by side ---------- */
+
+function SourceDocuments({ c, field }: { c: EmailCase; field: FieldKey | null }) {
+  const si = c.attachments.find((a) => a.kind === 'SI');
+  const bl = c.attachments.find((a) => a.kind === 'BL');
+  const row = field ? c.comparison.find((r) => r.field === field) : undefined;
+  const others = c.attachments.filter((a) => a !== si && a !== bl);
+
+  const views: Array<{ a: Attachment; heading: string; snippet?: string }> = [
+    ...(si ? [{ a: si, heading: 'Shipping instruction', snippet: row?.si.snippet }] : []),
+    ...(bl ? [{ a: bl, heading: 'Draft bill of lading', snippet: row?.bl.snippet }] : []),
+    ...others.map((a) => ({ a, heading: 'Other attachment' })),
+  ];
+
+  return (
+    <section className="panel" aria-labelledby="src-title">
+      <header className="panel__head">
+        <h3 id="src-title" className="panel__title">
+          Source documents
+        </h3>
+        <span className="panel__meta">
+          {field
+            ? `Highlighting ${FIELD_LABELS[field].toLowerCase()}`
+            : c.comparison.length > 0
+              ? 'Select a field above to highlight where each value came from'
+              : `${c.attachments.length} attached`}
+        </span>
+      </header>
+      <div className="case-docs">
+        {views.map(({ a, heading, snippet }) => (
+          <EvidenceViewer
+            key={a.id}
+            doc={DOCUMENTS[a.id] ?? null}
+            attachment={a}
+            heading={heading}
+            snippet={snippet}
+            highlightField={field}
+            highlight={field && a.kind !== 'Other' ? regionFor(a.kind, field) : null}
+            compact
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
 /* ---------- tabs ---------- */
 
 function DocumentsTab({ c }: { c: EmailCase }) {
@@ -292,10 +348,12 @@ function DocumentsTab({ c }: { c: EmailCase }) {
   }
   return (
     <>
-      <p className="tab-panel__note">
-        Open links are short lived. Each one stops working after the time shown, so open the file when you need
-        it rather than saving the link.
-      </p>
+      {c.attachments.some((a) => a.linkExpiresIn) && (
+        <p className="tab-panel__note">
+          Open links are short lived. Each one stops working after the time shown, so open the file when you need
+          it rather than saving the link.
+        </p>
+      )}
       <div className="table-wrap">
         <table className="table">
           <thead>
@@ -323,7 +381,11 @@ function DocumentsTab({ c }: { c: EmailCase }) {
                 <td className="num">{a.pageCount || '—'}</td>
                 <td className="num muted">{a.sizeLabel}</td>
                 <td>
-                  {a.linkExpiresIn ? (
+                  {a.fileUrl ? (
+                    <a href={a.fileUrl} target="_blank" rel="noreferrer" className="doclink">
+                      Open <ExternalLink size={12} aria-hidden="true" />
+                    </a>
+                  ) : a.linkExpiresIn ? (
                     <a
                       href="#open-document"
                       onClick={(e) => e.preventDefault()}

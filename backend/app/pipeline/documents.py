@@ -77,7 +77,8 @@ def _clean(s) -> str:
     return "" if s is None else str(s).strip()
 
 
-def read_attachment(storage: ByteReader, path: str) -> Document:
+def read_attachment(storage: ByteReader, path: str, page_images: bool = True) -> Document:
+    """page_images=False skips rendering scanned pages to PNG - for callers that only need the text."""
     suffix = Path(path).suffix.lower()
     try:
         raw = storage.read_bytes(path)
@@ -91,7 +92,7 @@ def read_attachment(storage: ByteReader, path: str) -> Document:
         if suffix == ".txt":
             return Document(path, "text", text=raw.decode("utf-8", errors="replace"))
         if suffix == ".pdf":
-            return _read_pdf(path, raw)
+            return _read_pdf(path, raw, page_images)
         if suffix == ".docx":
             return _read_docx(path, raw)
         if suffix == ".xlsx":
@@ -102,7 +103,7 @@ def read_attachment(storage: ByteReader, path: str) -> Document:
     return Document(path, "none", unreadable=f"unsupported type {suffix}")
 
 
-def _read_pdf(path: str, raw: bytes) -> Document:
+def _read_pdf(path: str, raw: bytes, page_images: bool = True) -> Document:
     import pdfplumber
 
     with pdfplumber.open(io.BytesIO(raw)) as pdf:
@@ -114,6 +115,8 @@ def _read_pdf(path: str, raw: bytes) -> Document:
         text = "\n".join(pages)
         if len(text) >= TEXT_DENSITY_MIN * len(pdf.pages):
             return Document(path, "text-layer", text=text, rows=rows)
+        if not page_images:
+            return Document(path, "scan", text=text)
         images = [p.to_image(resolution=200).original for p in pdf.pages]
 
     buffers = []

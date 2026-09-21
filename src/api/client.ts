@@ -23,6 +23,24 @@ export class ApiError extends Error {
   }
 }
 
+/* FastAPI errors arrive as {"detail": "..."}; show the detail, not raw JSON.
+   A 401 on a write action almost always means VITE_DEMO_TOKEN is unset or
+   stale in this build, so say that plainly instead of "invalid token". */
+function errorMessage(status: number, body: string): string {
+  if (status === 401) {
+    return DEMO_TOKEN
+      ? 'The server rejected this build’s demo token, so nothing was changed.'
+      : 'This build has no demo token (VITE_DEMO_TOKEN), so the server refused the change. Nothing was changed.';
+  }
+  try {
+    const detail = (JSON.parse(body) as { detail?: unknown }).detail;
+    if (typeof detail === 'string') return detail;
+  } catch {
+    /* not JSON - fall through to the raw body */
+  }
+  return body;
+}
+
 async function request<T>(path: string, init?: RequestInit & { auth?: boolean }): Promise<T> {
   const headers: Record<string, string> = { ...(init?.headers as Record<string, string> | undefined) };
   if (init?.auth) headers['X-Demo-Token'] = DEMO_TOKEN;
@@ -30,7 +48,7 @@ async function request<T>(path: string, init?: RequestInit & { auth?: boolean })
   const res = await fetch(`${BASE}${path}`, { ...init, headers });
   if (!res.ok) {
     const body = await res.text().catch(() => '');
-    throw new ApiError(res.status, body || res.statusText);
+    throw new ApiError(res.status, errorMessage(res.status, body) || res.statusText);
   }
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
@@ -126,6 +144,16 @@ export interface WireFieldDecision {
   corrected_bl?: string | null;
 }
 
+export interface WireAttachmentText {
+  path: string;
+  filename: string;
+  method: string;
+  /** SI / BL as the pipeline read it from the content; null = neither (wrong document). */
+  role: 'SI' | 'BL' | null;
+  text: string;
+  unreadable: string | null;
+}
+
 export interface WireStats {
   processed: number;
   by_category: Record<string, number>;
@@ -141,6 +169,8 @@ export const api = {
 
   listEmails: () => request<{ count: number; emails: WireEmailSummary[] }>('/emails'),
   getEmail: (id: string) => request<WireEmail>(`/emails/${id}`),
+  getAttachmentText: (id: string, index: number) =>
+    request<WireAttachmentText>(`/emails/${id}/attachments/${index}/text`),
 
   listResults: () => request<{ count: number; results: WireResultLight[] }>('/results'),
   getResult: (id: string) => request<WireResult>(`/results/${id}`),
@@ -160,3 +190,8 @@ export const api = {
 };
 
 export const API_CONFIGURED = BASE.length > 0;
+
+/** Direct link to the original file (served inline, so PDFs open in the browser). */
+export function attachmentFileUrl(emailId: string, index: number): string {
+  return `${BASE}/emails/${emailId}/attachments/${index}`;
+}

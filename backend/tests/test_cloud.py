@@ -214,3 +214,42 @@ def test_api(monkeypatch):
     monkeypatch.setenv("DEMO_TOKEN", "secret")
     assert c.post("/llm/ping").status_code == 401
     assert c.post("/llm/ping", headers={"X-Demo-Token": "wrong"}).status_code == 401
+
+
+def test_attachment_endpoints(monkeypatch, tmp_path):
+    """Serves an attachment's file and extracted text by position, never by a client-supplied path."""
+    import json
+    from fastapi.testclient import TestClient
+    from app import main
+    from app.cloud import storage
+
+    (tmp_path / "inbox").mkdir()
+    (tmp_path / "attachments").mkdir()
+    (tmp_path / "inbox" / "email_900.json").write_text(json.dumps({
+        "email_id": "email_900", "from": "a@b.c", "subject": "SI/BL", "body": "",
+        "attachments": ["attachments/email_900_SI.txt", "attachments/email_900_BL.txt"],
+    }))
+    (tmp_path / "attachments" / "email_900_SI.txt").write_bytes(b"BILL OF LADING\nShipper: ACME")
+    (tmp_path / "attachments" / "email_900_BL.txt").write_bytes(b"SHIPPING INSTRUCTION\nShipper: ACME")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.delenv("S3_BUCKET", raising=False)
+    storage.get_storage.cache_clear()
+    c = TestClient(main.app)
+
+    r = c.get("/emails/email_900/attachments/0")
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/plain")
+    assert r.headers["content-disposition"] == 'inline; filename="email_900_SI.txt"'
+    assert r.content == b"BILL OF LADING\nShipper: ACME"
+
+    t = c.get("/emails/email_900/attachments/0/text").json()
+    assert t["filename"] == "email_900_SI.txt"
+    assert t["role"] == "BL"          # role comes from the content, not the misleading filename
+    assert "Shipper: ACME" in t["text"]
+    assert c.get("/emails/email_900/attachments/1/text").json()["role"] == "SI"
+
+    assert c.get("/emails/email_900/attachments/2").status_code == 404
+    assert c.get("/emails/email_900/attachments/-1").status_code == 404
+    assert c.get("/emails/email_999/attachments/0").status_code == 404
+    assert c.get("/emails/..%2Fsecret/attachments/0").status_code == 404
+    storage.get_storage.cache_clear()

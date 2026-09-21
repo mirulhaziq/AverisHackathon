@@ -68,28 +68,29 @@ Mapped to the hackathon's judging criteria (see [Rules & Regulations](<../Averis
 
 ## 6. Current status
 
-*Last checked against the repo at commit `e52b8da` (branch `main`).*
+*Last checked against the repo and the live API on 22 September 2026 (backend commit `549682a`, UI commit `012d82f`).*
 
 | Phase | Status | Evidence |
 |---|---|---|
-| 0 — Account and safety | ✅ Assumed done | OIDC role-assumption is wired into CI, implying a deployer role exists. Not independently verifiable from the repo — confirm MFA, budget alert, and `aws sts get-caller-identity` directly with whoever holds the account. |
-| 1 — Deployed skeleton | ✅ Done | [`backend/app/main.py`](../backend/app/main.py) is a FastAPI app wrapped with Mangum for Lambda. `/health` returns `status`, `commit` (`GIT_SHA` env var), and `region` — satisfies the "show the deployed version" decision. Stub endpoints `/emails`, `/process/{email_id}`, `/results` exist matching the shape of the eventual contract, but all return empty/fake data. |
-| 2 — CI/CD and repo hygiene | ✅ Done | [`.github/workflows/deploy-backend.yml`](../.github/workflows/deploy-backend.yml) does OIDC → ECR → Lambda on push to `backend/**`, with a `/health` smoke test after deploy. Root and backend `.gitignore` both exclude `.env`, `data/`, `ground_truth.json`, `score*.py`, and `*.zip` — dataset and answer key are correctly kept out of the repo. |
-| 3 — LLM access | ❌ Not started | No Bedrock or Gemini client code anywhere in the repo. This is the next gate (G2) and it's already overdue relative to the H4–6 window if the 39-hour clock started at "first commit." |
-| 4 — Storage | ❌ Not started | No S3 bucket provisioning, no reader module. `/emails` just returns `{"emails": [], "note": "stub"}` — nothing reads from S3 yet. |
-| 5 — LLM client | ❌ Not started | No retry/timeout/validation/caching module. Depends on Phase 3. |
-| 6 — State | ❌ Not started | No DynamoDB tables, no resumable batch loop. `/process/{email_id}` returns a hardcoded stub record and writes nothing. **This is the G3 gate — the one that must hold — and it hasn't been started.** |
-| 7 — Advanced inputs | ❌ Not started | No Textract integration. |
-| 8 — Failure visibility | ❌ Not started | No retry endpoint, no failure/step logs exposed. (Frontend already has the UI shape for this — see `src/screens/CaseDetail.tsx` and the `TimelineStep`/`failure` fields in `src/types.ts` — but it's fed by seed data, not the real backend.) |
-| 9 — Hardening | ❌ Not started | No demo token / auth on `/process`, no rate limiting, no cold-start or phone testing evidence. |
-| 10 — Freeze and support | ❌ Not started | No architecture diagram delivered yet — the SDD's Figure 1 can serve as a starting point once the real build settles. |
+| 0 — Account and safety | ✅ Done | OIDC deployer role in use by both workflows. |
+| 1 — Deployed skeleton | ✅ Done | FastAPI on Lambda behind a Function URL; `/health` returns the deployed commit, region and storage mode. |
+| 2 — CI/CD and repo hygiene | ✅ Done | `deploy-backend.yml` (ECR → Lambda → smoke test) and `deploy-ui.yml` (S3 → CloudFront). Dataset, answer key and scoring scripts are gitignored. |
+| 3 — LLM access | ✅ Done | Amazon Bedrock (Nova Lite by default, configurable per task); `/llm/ping` proves access from the deployed app. |
+| 4 — Storage | ✅ Done | Dataset in a private S3 bucket; `backend/app/cloud/storage.py` reads S3 in the cloud and a local folder in dev. |
+| 5 — LLM client | ✅ Done | `backend/app/cloud/llm.py`: retries, timeouts, JSON-schema validation, typed `LLMError` with a retryable flag, in-memory cache. |
+| 6 — State | ✅ Done — **G3 met** | DynamoDB results store with review and failure queues; `/process-all` is resumable per email. All 520 emails processed on the public URL (357 OK, 46 mismatch, 117 review, 0 failed). |
+| 7 — Advanced inputs | 🟡 Partial | PDF text layers, Word and Excel are read directly, and unreadable files go to review. No Textract OCR for scans. |
+| 8 — Failure visibility | ✅ Done | `/failures` exposes step, error kind and retryable flag; the UI's Retry calls `/process/{id}`. |
+| 9 — Hardening | 🟡 Partial | Demo token guards every paid or write endpoint (fails closed if unset). No rate limiting; cold-start and phone tests not recorded. |
+| 10 — Freeze and support | 🟡 In progress | README with architecture diagram added. Deck and demo video outstanding. |
 
-### Bottom line
+### Remaining gaps
 
-**The team is currently sitting between Phase 2 and Phase 3.** Phases 0–2 (account safety, deployed skeleton, CI/CD hygiene) are solid. Everything from Phase 3 onward — LLM access, storage, LLM client, state, advanced inputs, failure visibility, hardening — is unstarted. Given the hackathon submission window closes **22 Sept 2026, 12:00 p.m.** (see [Rules & Regulations](<../Averis x Monash Hackathon Rules and Regulations.pdf>)), and today is 21 Sept, there is realistically not enough runway left to complete Phases 3–10 as scoped in the SDD's full serverless architecture (Step Functions, Textract, Cognito, 6 DynamoDB tables).
-
-**Recommended immediate next step:** collapse Phases 3–6 into the smallest possible slice that still clears G3 — one real Bedrock (or Gemini) call, reading one file from S3, writing one result to a single DynamoDB table, exposed through the existing `/process/{email_id}` endpoint — and treat Phases 7–10 as roadmap items to describe in the deck rather than fully build. This keeps the "Working Core Prototype" and "Technology Integration" scoring categories credible without chasing scope that can't land in time.
+- **UI screens on sample data:** email imports, export history, settings and activity history have no backend endpoints; they are labelled as sample data in the UI.
+- **Case-level reviews** (wrong document type, missing attachment, unreadable) cannot be resolved on the server yet — only per-field reviews are.
+- **Normalization:** no port alias table (e.g. `CNSHA` vs `SHANGHAI`) and no number-word parsing.
+- **Security:** the demo token is baked into the public UI bundle, an accepted hackathon tradeoff. Production would use Cognito sign-in as the SDD describes.
 
 ---
 
-*SDVS Build Roadmap, status current as of 21 September 2026.*
+*SDVS Build Roadmap, status current as of 22 September 2026.*

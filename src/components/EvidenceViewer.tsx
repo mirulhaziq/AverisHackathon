@@ -12,6 +12,7 @@ import { ChevronLeft, ChevronRight, ExternalLink, Highlighter, ZoomIn, ZoomOut }
 import { PAGE_H, PAGE_W, type DocElement, type DocumentFacsimile } from '../data/documents';
 import { FIELD_LABELS, type Attachment, type FieldKey, type Region } from '../types';
 import { IconButton } from './Button';
+import { LiveDocument } from './LiveDocument';
 
 /* ---------- page rendering ---------- */
 
@@ -103,6 +104,7 @@ export function EvidenceViewer({
   highlight,
   highlightField,
   highlightLabel,
+  snippet,
   compact = false,
 }: {
   doc: DocumentFacsimile | null;
@@ -111,6 +113,8 @@ export function EvidenceViewer({
   highlight?: Region | null;
   highlightField?: FieldKey | null;
   highlightLabel?: string;
+  /** Live data: the evidence text to find and highlight in the real file. */
+  snippet?: string | null;
   compact?: boolean;
 }) {
   const [zoom, setZoom] = useState(compact ? 0.78 : 0.9);
@@ -136,6 +140,18 @@ export function EvidenceViewer({
   }, [highlight, page, zoom]);
 
   const lines = useMemo(() => (doc && asText ? toTextLines(doc, page) : []), [asText, doc, page]);
+
+  if (!doc && attachment?.source) {
+    return (
+      <LiveDocument
+        attachment={{ ...attachment, source: attachment.source }}
+        heading={heading}
+        snippet={snippet}
+        highlightLabel={highlightLabel ?? (highlightField ? FIELD_LABELS[highlightField] : undefined)}
+        compact={compact}
+      />
+    );
+  }
 
   if (!doc) {
     return (

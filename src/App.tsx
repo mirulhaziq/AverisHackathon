@@ -29,6 +29,15 @@ const TITLES: Array<[RegExp, string]> = [
   [/^\/design-system/, 'Design system'],
 ];
 
+/* Screens with no backend endpoint yet - they run on sample data even when
+   the live API is up, so say so rather than let it pass for real results. */
+const SAMPLE_ONLY: Array<[RegExp, string]> = [
+  [/^\/batches/, 'Email imports'],
+  [/^\/export/, 'Export history'],
+  [/^\/configuration/, 'Settings'],
+  [/^\/audit/, 'Activity history'],
+];
+
 export function App() {
   const { user, dataError } = useStore();
   const { pathname } = useLocation();
@@ -36,6 +45,7 @@ export function App() {
   if (!user) return <SignIn />;
 
   const title = TITLES.find(([re]) => re.test(pathname))?.[1] ?? 'Tidemark';
+  const sampleOnly = SAMPLE_ONLY.find(([re]) => re.test(pathname))?.[1];
 
   return (
     <AppShell title={title}>
@@ -43,6 +53,12 @@ export function App() {
         <Banner tone="warning" title="Showing sample data">
           The live API could not be reached ({dataError}), so this screen is showing sample data instead of real
           results.
+        </Banner>
+      )}
+      {!dataError && sampleOnly && (
+        <Banner tone="info" title="Sample data on this screen">
+          {sampleOnly} is not connected to the server yet, so this screen shows example data. Emails, results and
+          reviews elsewhere are live.
         </Banner>
       )}
       <Routes>

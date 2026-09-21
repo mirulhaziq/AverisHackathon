@@ -266,30 +266,38 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [dataError, setDataError] = useState<string | null>(null);
   const detailLoaded = useRef(new Set<string>());
 
+  /* Replaces cases/tasks with the live listing. Returns false if the API
+     could not be reached (sample data is left in place). */
+  const loadLiveData = useCallback(async (isCancelled: () => boolean = () => false) => {
+    try {
+      const [emailsResp, resultsResp] = await Promise.all([api.listEmails(), api.listResults()]);
+      if (isCancelled()) return true;
+      const resultsById = new Map(resultsResp.results.map((r) => [r.email_id, r]));
+      const subjectById = new Map(emailsResp.emails.map((e) => [e.email_id, e.subject]));
+      detailLoaded.current.clear();
+      setCases(emailsResp.emails.map((e) => buildLightCase(e, resultsById.get(e.email_id))));
+      setTasks(
+        resultsResp.results
+          .filter((r) => r.queue === 'review')
+          .map((r) => buildLightReviewTask(subjectById.get(r.email_id) ?? r.email_id, r)),
+      );
+      setDataError(null);
+      return true;
+    } catch (e) {
+      if (!isCancelled()) setDataError(e instanceof Error ? e.message : 'Could not reach the API.');
+      return false;
+    } finally {
+      if (!isCancelled()) setDataLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      try {
-        const [emailsResp, resultsResp] = await Promise.all([api.listEmails(), api.listResults()]);
-        if (cancelled) return;
-        const resultsById = new Map(resultsResp.results.map((r) => [r.email_id, r]));
-        const subjectById = new Map(emailsResp.emails.map((e) => [e.email_id, e.subject]));
-        setCases(emailsResp.emails.map((e) => buildLightCase(e, resultsById.get(e.email_id))));
-        setTasks(
-          resultsResp.results
-            .filter((r) => r.queue === 'review')
-            .map((r) => buildLightReviewTask(subjectById.get(r.email_id) ?? r.email_id, r)),
-        );
-      } catch (e) {
-        if (!cancelled) setDataError(e instanceof Error ? e.message : 'Could not reach the API.');
-      } finally {
-        if (!cancelled) setDataLoading(false);
-      }
-    })();
+    void loadLiveData(() => cancelled);
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [loadLiveData]);
 
   /* Fetches the full email + result for one case (comparisons, body,
      timeline, history) and merges it in place. Cheap to call repeatedly -
@@ -532,6 +540,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const retryCase = useCallback(
     (caseId: string, mode: 'fromFailedStep' | 'restart') => {
       const actor = user?.name ?? 'Unknown operator';
+      const before = cases.find((c) => c.id === caseId);
       setCases((prev) => prev.map((c) => (c.id === caseId ? { ...c, status: 'Processing' } : c)));
       logAudit({
         actor,
@@ -556,7 +565,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             body: `${caseId} now reads ${nextCase.result}.`,
           });
         } catch (e) {
-          setCases((prev) => prev.map((c) => (c.id === caseId ? { ...c, status: 'Failed', result: 'Failed' } : c)));
+          /* 4xx means the server refused the request (bad token, bad id) and
+             never ran the pipeline, so the case is unchanged - put it back
+             rather than marking it Failed. */
+          const refused = e instanceof ApiError && e.status >= 400 && e.status < 500;
+          setCases((prev) =>
+            prev.map((c) =>
+              c.id !== caseId ? c : refused && before ? before : { ...c, status: 'Failed', result: 'Failed' },
+            ),
+          );
           pushToast({
             tone: 'error',
             title: 'Retry failed',
@@ -565,7 +582,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
       })();
     },
-    [logAudit, pushToast, user],
+    [cases, logAudit, pushToast, user],
   );
 
   const reprocessBatch = useCallback(
@@ -675,9 +692,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [logAudit, pushToast, user],
   );
 
+  /* Resets the sample-only screens (batches, exports, audit, settings) and
+     re-fetches cases/tasks from the API. Cases only fall back to sample data
+     if the API is unreachable - a reset must never hide the real results. */
   const resetSampleData = useCallback(() => {
-    setCases(structuredClone(SEED_CASES));
-    setTasks(structuredClone(SEED_TASKS));
+    void loadLiveData().then((live) => {
+      if (live) return;
+      setCases(structuredClone(SEED_CASES));
+      setTasks(structuredClone(SEED_TASKS));
+    });
     setBatches(structuredClone(SEED_BATCHES));
     setExportsList(structuredClone(SEED_EXPORTS));
     setAudit(structuredClone(SEED_AUDIT));
@@ -686,8 +709,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setPortAliases(structuredClone(SEED_PORT_ALIASES));
     setSuffixes(structuredClone(SEED_SUFFIXES));
     setMapping(structuredClone(SEED_MAPPING));
-    pushToast({ tone: 'info', title: 'Sample data reset', body: 'Every case, task and batch is back to its starting state.' });
-  }, [pushToast]);
+    pushToast({
+      tone: 'info',
+      title: 'Sample data reset',
+      body: 'Batches, exports, activity and settings are back to their starting state. Cases were reloaded from the server.',
+    });
+  }, [loadLiveData, pushToast]);
 
   const value = useMemo<Store>(
     () => ({

@@ -121,6 +121,10 @@ export interface Attachment {
   /** Short-lived open link, shown with its expiry. */
   linkExpiresIn?: string;
   pageCount: number;
+  /** Live data only: where the API serves the original file, and the
+   *  email/position to fetch its extracted text from. */
+  fileUrl?: string;
+  source?: { emailId: string; index: number };
 }
 
 export type TimelineState = 'Done' | 'Failed' | 'Waiting' | 'Skipped' | 'Running';

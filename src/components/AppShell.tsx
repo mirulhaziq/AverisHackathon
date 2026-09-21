@@ -40,7 +40,7 @@ interface NavItem {
 }
 
 export function AppShell({ children, title }: { children: React.ReactNode; title: string }) {
-  const { user, tasks, can, signOut, themePref, setThemePref, switchRole, resetSampleData } = useStore();
+  const { user, tasks, can, signOut, themePref, setThemePref, switchRole, resetSampleData, dataError } = useStore();
   const [menuOpen, setMenuOpen] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -175,7 +175,7 @@ export function AppShell({ children, title }: { children: React.ReactNode; title
             <CircleHelp size={18} aria-hidden="true" />
             <span>Help & guidance</span>
           </NavLink>
-          <p className="rail__demo">Demo workspace · Sample data</p>
+          <p className="rail__demo">Demo workspace · {dataError ? 'Sample data' : 'Live data'}</p>
         </div>
       </nav>
 

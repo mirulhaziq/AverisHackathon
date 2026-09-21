@@ -128,6 +128,8 @@ function ReviewTaskScreen() {
     blHighlight = selected.region ?? regionFor('BL', markedField);
   }
 
+  const markedRow = markedField ? c?.comparison.find((r) => r.field === markedField) : undefined;
+
   const markLabel = hovered
     ? `${hovered.value} — ${hovered.sourceLabel}`
     : markedField
@@ -398,6 +400,7 @@ function ReviewTaskScreen() {
           doc={siFac}
           attachment={siDoc}
           heading="Shipping instruction"
+          snippet={markedRow?.si.snippet}
           highlight={siHighlight}
           highlightField={markedField}
           highlightLabel={hovered?.doc === 'SI' ? markLabel : markedField ? FIELD_LABELS[markedField] : undefined}
@@ -407,6 +410,7 @@ function ReviewTaskScreen() {
           doc={blFac}
           attachment={blDoc}
           heading="Draft bill of lading"
+          snippet={markedRow?.bl.snippet}
           highlight={blHighlight}
           highlightField={markedField}
           highlightLabel={hovered?.doc === 'BL' ? markLabel : markedField ? FIELD_LABELS[markedField] : undefined}

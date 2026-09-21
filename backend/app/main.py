@@ -2,9 +2,10 @@ import copy
 import hmac
 import os
 import re
+from pathlib import PurePosixPath
 from typing import List, Literal, Optional
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from mangum import Mangum
 from pydantic import BaseModel, Field
@@ -12,6 +13,7 @@ from pydantic import BaseModel, Field
 from app.cloud import db as dbm
 from app.cloud import llm
 from app.cloud.storage import NotFound, get_storage
+from app.pipeline.documents import read_attachment
 from app.pipeline.run import process_email as run_pipeline
 
 FIELDS = ["shipper", "consignee", "notify_party", "port_of_loading", "port_of_discharge",
@@ -58,6 +60,57 @@ def get_email(email_id: str):
         return get_storage().get(email_id)
     except NotFound:
         raise HTTPException(404, "email not found")
+
+
+_MEDIA_TYPES = {
+    ".pdf": "application/pdf",
+    ".txt": "text/plain; charset=utf-8",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+}
+
+
+def _attachment_path(email_id: str, index: int) -> str:
+    """Attachments are addressed by position in the email, never by a client-supplied path."""
+    try:
+        attachments = get_storage().get(email_id).get("attachments", [])
+    except NotFound:
+        raise HTTPException(404, "email not found")
+    if not 0 <= index < len(attachments):
+        raise HTTPException(404, "attachment not found")
+    return attachments[index]
+
+
+@app.get("/emails/{email_id}/attachments/{index}")
+def get_attachment_file(email_id: str, index: int):
+    """The original file, served inline so a browser can show a PDF in place."""
+    path = _attachment_path(email_id, index)
+    try:
+        raw = get_storage().read_bytes(path)
+    except NotFound:
+        raise HTTPException(404, "attachment not found")
+    name = PurePosixPath(path).name
+    return Response(
+        raw,
+        media_type=_MEDIA_TYPES.get(PurePosixPath(path).suffix.lower(), "application/octet-stream"),
+        headers={"Content-Disposition": f'inline; filename="{name}"', "Cache-Control": "private, max-age=300"},
+    )
+
+
+@app.get("/emails/{email_id}/attachments/{index}/text")
+def get_attachment_text(email_id: str, index: int):
+    """The text the pipeline read from the file, plus the SI/BL role it assigned from the content -
+    what the UI shows so a reviewer sees exactly what the comparison was based on."""
+    path = _attachment_path(email_id, index)
+    doc = read_attachment(get_storage(), path, page_images=False)  # the viewer shows the original PDF instead
+    return {
+        "path": path,
+        "filename": PurePosixPath(path).name,
+        "method": doc.method,
+        "role": doc.role if not doc.unreadable else None,
+        "text": doc.text,
+        "unreadable": doc.unreadable,
+    }
 
 
 @app.post("/llm/ping", dependencies=[Depends(require_demo_token)])
