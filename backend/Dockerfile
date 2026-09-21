@@ -5,4 +5,7 @@ RUN pip install --no-cache-dir -r ${LAMBDA_TASK_ROOT}/requirements.txt
 
 COPY app/ ${LAMBDA_TASK_ROOT}/app/
 
+ARG GIT_SHA=dev
+ENV GIT_SHA=$GIT_SHA
+
 CMD ["app.main.handler"]
