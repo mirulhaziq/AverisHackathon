@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from app.cloud import db as dbm
 from app.cloud import llm
 from app.cloud.storage import NotFound, get_storage
+from app.pipeline.run import process_email as run_pipeline
 
 FIELDS = ["shipper", "consignee", "notify_party", "port_of_loading", "port_of_discharge",
           "container_count", "gross_weight_kg"]
@@ -70,18 +71,53 @@ def llm_ping():
     return {"model": model, "reply": data}
 
 
-@app.post("/process/{email_id}")
+@app.post("/process/{email_id}", dependencies=[Depends(require_demo_token)])
 def process_email(email_id: str):
-    """STUB. Returns a record in the submission shape from sample_submission.json."""
-    return {
-        "email_id": email_id,
-        "category": "GENERAL",
-        "status": None,
-        "review_reason": None,
-        "has_defect": False,
-        "defect_fields": [],
-        "note": "stub",
-    }
+    """Runs classify -> extract -> compare for one email and stores the result.
+    Token-protected: this is the endpoint that spends Bedrock credits."""
+    _check_id(email_id)
+    storage = get_storage()
+    try:
+        email = storage.get(email_id)
+    except NotFound:
+        raise HTTPException(404, "email not found")
+    try:
+        record = run_pipeline(storage, email)
+    except llm.LLMError as e:
+        _db().mark_failed(email_id, "classify_or_extract", e.kind, str(e), e.retryable)
+        raise HTTPException(502, f"{e.kind}: {e}")
+    _db().put_result(record)
+    return record
+
+
+@app.post("/process-all", dependencies=[Depends(require_demo_token)])
+def process_all(limit: int = 20, retry_failed: bool = False):
+    """Processes up to `limit` not-yet-processed emails and returns. Call it
+    repeatedly until remaining == 0 - each email is written to DynamoDB as
+    soon as it finishes, so a dropped connection or a Lambda timeout loses no
+    completed work and a retry just continues where it stopped."""
+    storage = get_storage()
+    d = _db()
+    done_ids = {r["email_id"] for r in d.list_results()
+                if r.get("proc_state") == "done" or (r.get("proc_state") == "failed" and not retry_failed)}
+    pending = [e for e in storage.emails() if e["email_id"] not in done_ids][:max(1, min(limit, 100))]
+
+    processed, failed = [], []
+    for email in pending:
+        try:
+            record = run_pipeline(storage, email)
+            d.put_result(record)
+            processed.append(email["email_id"])
+        except llm.LLMError as e:
+            d.mark_failed(email["email_id"], "classify_or_extract", e.kind, str(e), e.retryable)
+            failed.append({"email_id": email["email_id"], "kind": e.kind})
+        except Exception as e:  # a bug in the pipeline must not stop the batch (FR-ERR-04)
+            d.mark_failed(email["email_id"], "pipeline", "unknown", str(e), False)
+            failed.append({"email_id": email["email_id"], "kind": "unknown"})
+
+    total = len(storage.emails())
+    remaining = total - len({r["email_id"] for r in d.list_results() if r.get("proc_state") == "done"})
+    return {"processed": len(processed), "failed": failed, "remaining": max(remaining, 0), "total": total}
 
 
 def _db():
