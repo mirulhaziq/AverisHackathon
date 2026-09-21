@@ -63,3 +63,17 @@ __pycache__/
 
 # organizers' dataset bundle — never ship this to a public repo
 /sdoc-hackathon-bundle/
+
+# organisers' docker scorer + dataset generator — local only, same rule as the bundle
+/sdoc-hackathon-docker/
+
+# offline dev harness: source is tracked, run artefacts are not
+/tools/runs/
+/tools/llm_cache.json
+/tools/llm_extract_cache.json
+/tools/submission.json
+/tools/submission_stage1.json
+/tools/submission_stage2.json
+/tools/extraction.json
+/tools/extract_worksheet.json
+/tools/comparison.json
