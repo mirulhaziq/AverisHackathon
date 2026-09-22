@@ -35,16 +35,17 @@ Built for the **Averis x Monash Hackathon 2026**.
 
 Current run on the full dataset: **520 emails processed, 0 failures** — 357 OK, 46 mismatches, 117 sent to review.
 
-**Scored against the organizers' actual ground truth** (`score_cli.py`, not a guess): **0.9537 final score**
-(98.7% classification accuracy, 100% defect recall, 93.5% end-to-end defect catch, 5/5 `wrong_doc_type` edge
-cases correctly escalated). This is real validation, not a self-reported estimate.
+**Scored against the organizers' actual ground truth** (`score_cli.py`, not a guess): **0.9795 final score**
+(98.7% classification accuracy, 100% defect recall, 97.8% end-to-end defect catch — 45/46 — 100% escalation
+recall on all 20 gold review cases, field-level F1 0.980). This is real validation, not a self-reported estimate,
+confirmed identically both offline and on the live deployed API.
 
 ## Where AI is used
 
 | Step | How |
 |---|---|
 | Email classification | Amazon Bedrock (Amazon Nova Lite by default), returns category + confidence + reason |
-| Field extraction | Bedrock with a fixed JSON schema, validated with `jsonschema`; invalid output is an error, never a guess |
+| Field extraction | Rules first (corpus-derived synonyms, quote verification), Bedrock tool-use fallback only for fields the rules leave genuinely absent — never a placeholder the customer wrote on purpose |
 | Comparison | **Not AI** — plain, unit-tested Python, so results are repeatable and explainable |
 
 The LLM client (`backend/app/cloud/llm.py`) adds retries, timeouts, JSON-schema validation and an in-memory cache
@@ -86,7 +87,9 @@ CloudFront, ECR · GitHub Actions with OIDC.
 ```
 backend/
   app/main.py            API endpoints
-  app/pipeline/          classify, documents (readers), fields (extract), normalize, compare, run (orchestrator)
+  app/pipeline/          classify, documents (readers), extract_rules + extract_llm (extraction, rules-first with
+                        an LLM fallback), contracts (the extraction data model), llm_tools (Bedrock tool-use
+                        client for the fallback), normalize, compare, run (orchestrator)
   app/cloud/             S3/local storage, DynamoDB results store, Bedrock LLM client
   tests/                 pytest suite (S3/DynamoDB mocked with moto)
 src/
@@ -176,10 +179,6 @@ Pushing to `main` deploys automatically (see `.github/workflows/`). The workflow
   the server, so acknowledging one is local to the browser.
 - **Demo token in the UI bundle.** Accepted for the hackathon so judges can try review and retry; a production
   build would use per-user sign-in (the SDD plans Amazon Cognito) instead of a shared token.
-- **LLM extraction fallback is built but not wired in.** Field extraction in the live pipeline is rules-only
-  (`backend/app/pipeline/fields.py`); a complete LLM-fallback implementation with its own contracts, prompts and
-  rule ladder exists on `feature/llm-extraction-fallback` (`tools/`) but hasn't been merged into the live
-  pipeline yet.
 - **No OCR yet.** Scanned PDFs are read from whatever text layer they have; Amazon Textract is designed in the SDD
   but not built.
 - **No port alias table.** `SHANGHAI` vs `CNSHA` is not treated as the same port yet.

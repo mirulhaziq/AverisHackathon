@@ -68,7 +68,7 @@ Mapped to the hackathon's judging criteria (see [Rules & Regulations](<../Averis
 
 ## 6. Current status
 
-*Last checked against the repo and the live API on 22 September 2026 (backend commit `a492dec`, UI commit `f575127`).*
+*Last checked against the repo and the live API on 22 September 2026 (backend commit `0e3ed0c`, UI commit `f575127`).*
 
 | Phase | Status | Evidence |
 |---|---|---|
@@ -91,26 +91,43 @@ the actual `ground_truth.json` — both gitignored immediately, never committed.
 
 | Metric | Score |
 |---|---|
-| **Final score** | **0.9537** |
+| **Final score** | **0.9795** |
 | Stage 1 classification accuracy / macro-F1 | 98.7% / 98.2% |
-| Stage 3 defect recall / precision | 100% / 92.0% |
-| **End-to-end (headline metric)** | **93.5%** (43/46 defect emails caught fully end to end) |
-| Escalation recall (gold `NEEDS_REVIEW` cases caught) | 95% (19/20) |
-| `wrong_doc_type` edge cases caught | 5/5 |
+| Stage 3 defect recall / precision | 100% / 95.8% |
+| Field-level F1 / exact-match rate | 98.0% / 98.5% |
+| **End-to-end (headline metric)** | **97.8%** (45/46 defect emails caught fully end to end) |
+| Escalation recall (gold `NEEDS_REVIEW` cases caught) | **100%** (20/20) |
+| `wrong_doc_type` / `unreadable` / `missing_attachment` / `missing_value` caught | 5/5 each |
 
-This is the evidence the "Feasibility and Validation" judging criterion asks for. Two real bugs were found and
-fixed this way, not by inspection: `_assign_roles` originally trusted the `_SI`/`_BL` filename suffix rather than
-reading the content, missing all 5 `wrong_doc_type` gold cases (a file literally named `..._BL.txt` was a
-commercial invoice); and the classifier read "the real BL isn't attached" as "this isn't a comparison request,"
-misclassifying the same 5 cases as `GENERAL` before they ever reached document-role logic. Fixing both took the
-score from 0.9492 → 0.9537 and escalation recall from 70% → 95%.
+This is the evidence the "Feasibility and Validation" judging criterion asks for, and it moved twice, each time
+from a real bug found by scoring against ground truth rather than by inspection:
+
+1. **0.9492 → 0.9537**: `_assign_roles` originally trusted the `_SI`/`_BL` filename suffix rather than reading the
+   content, missing all 5 `wrong_doc_type` gold cases (a file literally named `..._BL.txt` was a commercial
+   invoice); the classifier separately read "the real BL isn't attached" as "this isn't a comparison request,"
+   misclassifying the same 5 cases as `GENERAL` before they ever reached document-role logic.
+2. **0.9537 → 0.9795**: integrated the corpus-derived rules engine and LLM extraction fallback from
+   `feature/llm-extraction-fallback` (see below) — the better rules alone (preference-ranked labels, placeholder
+   detection, same-as-consignee resolution) closed the remaining escalation gap; on this dataset the LLM fallback
+   itself makes zero calls, since every gap the better rules still leave is a legitimate placeholder or an
+   unreadable/wrong-type document a text prompt can't help with anyway. Confirmed identically offline and on the
+   redeployed live API — 520/520 processed, 0 failures, same score both times.
+
+### Feature branch merged: `feature/llm-extraction-fallback`
+
+Previously tracked here as unmerged. It carried a complete parallel extraction design (`tools/contracts.py`,
+`tools/extract.py`, `tools/llm_extract.py`, `tools/llm.py`) built independently of `backend/app/pipeline/`.
+Reconciling the two meant keeping `documents.py` as-is (it already had fixes — content-based role assignment,
+"To the Order of" consignee — that the branch's own `tools/dataset.py` lacked) while adopting the branch's more
+corpus-validated rules engine and its LLM fallback, landing as `contracts.py`, `extract_rules.py`, `extract_llm.py`
+and `llm_tools.py`. The branch's own selftest suites (every check pinned to a real document, not a synthetic
+fixture) were ported into 63 real pytest tests rather than left as a CLI command.
 
 ### Remaining gaps
 
 - **UI screens on sample data:** email imports, export history, settings and activity history have no backend endpoints; they are labelled as sample data in the UI.
 - **Case-level reviews** (wrong document type, missing attachment, unreadable) cannot be resolved on the server yet — only per-field reviews are.
 - **Normalization:** no port alias table (e.g. `CNSHA` vs `SHANGHAI`) and no number-word parsing.
-- **LLM extraction fallback exists but isn't merged.** `feature/llm-extraction-fallback` has a complete implementation (`tools/contracts.py`, `tools/classify.py`, `tools/extract.py`, `tools/llm_classify.py`, `tools/llm_extract.py`) with its own Pydantic contracts and a rule-ladder-plus-LLM design, built independently of `backend/app/pipeline/`. It would mainly help the 117 `NEEDS_REVIEW` cases where rules alone can't find a field. Integrating it means reconciling two parallel extraction designs, not just merging a branch.
 - **Security:** the demo token is baked into the public UI bundle, an accepted hackathon tradeoff. Production would use Cognito sign-in as the SDD describes.
 
 ---
