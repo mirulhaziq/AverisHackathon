@@ -113,6 +113,13 @@ from a real bug found by scoring against ground truth rather than by inspection:
    unreadable/wrong-type document a text prompt can't help with anyway. Confirmed identically offline and on the
    redeployed live API — 520/520 processed, 0 failures, same score both times.
 
+   The fallback making zero calls proves it isn't *needed* on this dataset, not that it *works* - that gap was
+   closed separately: a real Bedrock call was forced through the exact fallback path (`build_call` +
+   `BedrockBackend`, not the scripted-mock tests) against `email_004`, asking for `consignee` and
+   `gross_weight_kg` as if the rules hadn't found them. The model (`apac.amazon.nova-lite-v1:0`) returned both
+   correctly, with quotes that passed verification - the tool-use call, schema and quote-checking gate are
+   confirmed working against real Bedrock, not only against `ScriptedBackend`.
+
 ### Feature branch merged: `feature/llm-extraction-fallback`
 
 Previously tracked here as unmerged. It carried a complete parallel extraction design (`tools/contracts.py`,
