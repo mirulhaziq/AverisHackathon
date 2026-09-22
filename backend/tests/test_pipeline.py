@@ -10,10 +10,20 @@ from app.pipeline.compare import compare_field, compare_fields, has_uncertain_fi
 from app.pipeline.documents import Document, read_attachment
 from app.pipeline.fields import extract_fields, match_field
 from app.pipeline.normalize import normalize, normalize_container_count, normalize_party, normalize_port, normalize_weight_kg
-from app.pipeline.run import _assign_roles, process_email
+from app.pipeline.run import process_email
 
 DATA = Path(os.environ.get("TEST_DATA_DIR", "data"))
 needs_data = pytest.mark.skipif(not (DATA / "inbox").exists(), reason="no dataset at TEST_DATA_DIR/data")
+
+
+class FakeStorage:
+    def __init__(self, files):
+        self.files = files
+
+    def read_bytes(self, path):
+        if path not in self.files:
+            raise FileNotFoundError(path)
+        return self.files[path]
 
 
 # ---------- normalize ----------
@@ -124,26 +134,10 @@ def test_classify_email_parses_llm_json(monkeypatch):
 
 
 # ---------- run (orchestration) ----------
-def test_assign_roles_needs_exactly_one_each():
-    docs = {"a": Document("a", "text", text="SHIPPING INSTRUCTION\n"),
-           "b": Document("b", "text", text="DRAFT BILL OF LADING\n")}
-    assert _assign_roles(docs) == ("a", "b")
-    assert _assign_roles({"a": docs["a"]}) is None
-    two_si = {"a": docs["a"], "c": Document("c", "text", text="SHIPPING INSTRUCTION\n")}
-    assert _assign_roles(two_si) is None
-
-
-def test_assign_roles_ignores_filename_and_trusts_content():
-    """Regression test for the real dataset bug: a file literally named
-    '..._BL.txt' whose content is a commercial invoice must NOT be paired in
-    as the BL - this is the wrong_doc_type edge case the filename-only
-    version of _assign_roles missed entirely (0/5 on the real dataset)."""
-    docs = {
-        "attachments/email_501_SI.txt": Document("x_SI.txt", "text", text="SHIPPING INSTRUCTION\n"),
-        "attachments/email_501_BL.txt": Document("x_BL.txt", "text", text="COMMERCIAL INVOICE\n"),
-    }
-    assert _assign_roles(docs) is None  # exactly one SI, zero BL - not a false match
-
+# Role assignment and the corpus-wide extraction spread are now covered far
+# more thoroughly by test_extract_rules.py (ported from the real-dataset
+# selftest in feature/llm-extraction-fallback) - including the exact
+# wrong_doc_type regression this file used to test standalone.
 
 def test_process_email_non_comparison_category_short_circuits(monkeypatch):
     monkeypatch.setattr("app.pipeline.run.classify_email",
@@ -153,43 +147,14 @@ def test_process_email_non_comparison_category_short_circuits(monkeypatch):
 
 
 def test_process_email_missing_attachment(monkeypatch):
+    """Even with one real attachment present (read successfully), fewer than
+    two is still missing_attachment - case_review_reasons decides this after
+    reading whatever is there, not before, so the evidence isn't wasted."""
     monkeypatch.setattr("app.pipeline.run.classify_email",
                         lambda email: {"category": "BL_COMPARISON", "confidence": 0.9, "reason": "asks to compare"})
-    record = process_email(storage=None, email={"email_id": "email_002", "attachments": ["attachments/e_SI.txt"]})
+    fake_storage = FakeStorage({"attachments/e_SI.txt": b"Shipping Instruction\nShipper: ACME LTD\n"})
+    record = process_email(storage=fake_storage, email={"email_id": "email_002", "attachments": ["attachments/e_SI.txt"]})
     assert record["status"] == "NEEDS_REVIEW" and record["review_reason"] == "missing_attachment"
-
-
-# ---------- against the real dataset ----------
-@needs_data
-def test_extraction_and_comparison_over_real_bl_comparison_emails():
-    """Runs the rule-based half of the pipeline (no LLM) over every real email
-    that plausibly has an SI+BL pair, to sanity check it doesn't crash and
-    produces a sensible spread of outcomes."""
-    st = Storage(bucket="", data_dir=DATA)
-    outcomes = {"OK": 0, "MISMATCH": 0, "NEEDS_REVIEW": 0}
-    for email in st.emails():
-        atts = email.get("attachments") or []
-        if len(atts) < 2:
-            continue
-        docs = {p: read_attachment(st, p) for p in atts}
-        if any(d.unreadable for d in docs.values()):
-            outcomes["NEEDS_REVIEW"] += 1
-            continue
-        roles = _assign_roles(docs)
-        if roles is None:
-            outcomes["NEEDS_REVIEW"] += 1
-            continue
-        si_doc, bl_doc = docs[roles[0]], docs[roles[1]]
-        comparisons, defects = compare_fields(extract_fields(si_doc), extract_fields(bl_doc))
-        if has_uncertain_field(comparisons):
-            outcomes["NEEDS_REVIEW"] += 1
-        elif defects:
-            outcomes["MISMATCH"] += 1
-        else:
-            outcomes["OK"] += 1
-    assert sum(outcomes.values()) > 0
-    # not everything should land in the same bucket - a real signal the rules do something
-    assert len([v for v in outcomes.values() if v > 0]) >= 2
 
 
 # ---------- full HTTP route, real dataset, mocked Bedrock + DynamoDB ----------

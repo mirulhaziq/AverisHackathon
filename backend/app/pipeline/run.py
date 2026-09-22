@@ -1,8 +1,19 @@
-"""Orchestrates one email end to end: classify -> (for BL_COMPARISON) read
-attachments -> assign SI/BL roles from CONTENT -> extract fields -> compare ->
-build the result record. This is the module `/process/{email_id}` calls; it
-raises llm.LLMError on any LLM failure so the caller can route it to the
-failure queue (db.mark_failed) instead of guessing a result (FR-ERR-01, BR-04).
+"""Orchestrates one email end to end: classify -> (for BL_COMPARISON) extract
+with rules + LLM fallback -> compare -> build the result record. This is the
+module `/process/{email_id}` calls; it raises llm.LLMError on any classify
+failure so the caller can route it to the failure queue (db.mark_failed)
+instead of guessing a result (FR-ERR-01, BR-04). Extraction fallback failures
+degrade gracefully instead (see extract_llm.fill_gaps) - a dead Bedrock call
+during extraction routes the case to review, not to the failure queue, since
+the rules alone may already have everything needed.
+
+Field extraction is rules-first (extract_rules.py, corpus-derived synonyms
+and quote verification) with an LLM fallback (extract_llm.py) for whatever
+the rules leave genuinely absent - never for a value the rules found or a
+placeholder the customer wrote on purpose. Case-level review reasons
+(wrong_doc_type / missing_attachment / unreadable / missing_value) come from
+contracts.export_reason(), the single agreed mapping from the internal SRS
+6.5 vocabulary to the four reasons the submission accepts.
 
     from app.pipeline.run import process_email
     record = process_email(storage, email)
@@ -12,9 +23,10 @@ Owner: pipeline (P2/P3).
 import time
 
 from app.pipeline.classify import classify_email
-from app.pipeline.compare import compare_fields, has_uncertain_field
-from app.pipeline.documents import read_attachment
-from app.pipeline.fields import extract_fields
+from app.pipeline.compare import compare_field
+from app.pipeline.contracts import FIELD_IDS
+from app.pipeline.extract_llm import extract_case_with_fallback
+from app.pipeline.llm_tools import BedrockBackend, extract_cache
 
 _EMPTY_RESULT = {"status": "OK", "review_reason": None, "has_defect": False, "defect_fields": [], "comparisons": []}
 
@@ -26,54 +38,44 @@ def _step(steps, name, fn, *args):
     return result
 
 
-def _needs_review(reason, comparisons=(), defect_fields=()):
-    return {
-        "status": "NEEDS_REVIEW",
-        "review_reason": reason,
-        "has_defect": bool(defect_fields),
-        "defect_fields": list(defect_fields),
-        "comparisons": list(comparisons),
-    }
+def _as_legacy(fv):
+    """FieldValue -> the {"value", "snippet"} shape compare.py expects, or
+    None if nothing was found - normalisation is normalize.py/compare.py's
+    job, this only carries what extraction actually produced."""
+    if fv.raw is None:
+        return None
+    return {"value": fv.raw, "snippet": fv.quote or f"(no source line recorded for {fv.raw!r})"}
 
 
-def _assign_roles(docs: dict):
-    """docs: {path: Document}. Returns (si_path, bl_path) or None.
-
-    Role comes from CONTENT (Document.role, which reads the title text and
-    only falls back to the filename when the document has no readable
-    title) - never from the filename alone. A file named "..._BL.txt" whose
-    content is actually a commercial invoice must NOT be treated as a BL;
-    this is exactly the wrong_doc_type case (FR-DOC-01)."""
-    si = [p for p, d in docs.items() if d.role == "SI"]
-    bl = [p for p, d in docs.items() if d.role == "BL"]
-    if len(si) == 1 and len(bl) == 1:
-        return si[0], bl[0]
-    return None
-
-
-def _compare_si_bl(storage, attachments, steps):
-    docs = {path: read_attachment(storage, path) for path in attachments}
+def _compare_si_bl(storage, email, steps):
+    backend = BedrockBackend()
+    cache = extract_cache()
+    result = _step(steps, "extract", extract_case_with_fallback, storage, email, backend, cache)
     steps.append({"step": "read_documents", "ok": True,
-                  "detail": {path: d.method for path, d in docs.items()}})
+                  "detail": {r.path: r.role for r in result.roles}})
 
-    if any(d.unreadable for d in docs.values()):
-        return _needs_review("unreadable")
+    reason = result.export_reason  # wrong_doc_type | missing_attachment | unreadable | missing_value | None
 
-    roles = _assign_roles(docs)
-    if roles is None:
-        return _needs_review("wrong_doc_type")
-    si_doc, bl_doc = docs[roles[0]], docs[roles[1]]
-
-    si_fields = extract_fields(si_doc)
-    bl_fields = extract_fields(bl_doc)
-    steps.append({"step": "extract", "ok": True,
-                  "detail": {"si_fields": list(si_fields), "bl_fields": list(bl_fields)}})
-
-    comparisons, defects = compare_fields(si_fields, bl_fields)
+    comparisons = []
+    defects = []
+    # Comparisons are worth showing whenever both sides were at least attempted -
+    # even a missing_value review benefits from seeing what WAS extracted. Skip
+    # them only when there's nothing meaningful to compare (no attachment, wrong
+    # document type, or a file that couldn't be read at all).
+    if reason not in ("wrong_doc_type", "missing_attachment", "unreadable"):
+        for field in FIELD_IDS:
+            si_legacy, bl_legacy = _as_legacy(result.si[field]), _as_legacy(result.bl[field])
+            comparisons.append(compare_field(field, si_legacy, bl_legacy))
+        defects = [c["field"] for c in comparisons if c["match"] is False]
     steps.append({"step": "compare", "ok": True})
 
-    if has_uncertain_field(comparisons):
-        return _needs_review("missing_value", comparisons, defects)
+    if reason:
+        # Matches the scored submission shape exactly (validated against the
+        # organizers' ground truth): a case under review commits no defect
+        # verdict yet, even if some fields already look mismatched - that
+        # verdict is confirmed after review, not guessed now (BR-04).
+        return {"status": "NEEDS_REVIEW", "review_reason": reason, "has_defect": False,
+                "defect_fields": [], "comparisons": comparisons}
     if defects:
         return {"status": "MISMATCH", "review_reason": None, "has_defect": True,
                 "defect_fields": defects, "comparisons": comparisons}
@@ -90,11 +92,7 @@ def process_email(storage, email: dict) -> dict:
     if category != "BL_COMPARISON":
         result = dict(_EMPTY_RESULT)
     else:
-        attachments = email.get("attachments") or []
-        if len(attachments) < 2:
-            result = _needs_review("missing_attachment")
-        else:
-            result = _compare_si_bl(storage, attachments, steps)
+        result = _compare_si_bl(storage, email, steps)
 
     return {
         "email_id": email["email_id"],

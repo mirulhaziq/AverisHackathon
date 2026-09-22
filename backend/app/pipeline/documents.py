@@ -41,6 +41,7 @@ class Document:
     path: str
     method: str                       # text | text-layer | docx | xlsx | scan | none
     text: str = ""
+    pages: list[str] = field(default_factory=list)              # text, per page (PDF only; else [text] or [])
     rows: list[tuple[str, ...]] = field(default_factory=list)   # docx/xlsx cells
     page_images: list[bytes] = field(default_factory=list)      # PNG, scans only
     unreadable: str | None = None     # reason when method == "none"
@@ -90,7 +91,8 @@ def read_attachment(storage: ByteReader, path: str, page_images: bool = True) ->
 
     try:
         if suffix == ".txt":
-            return Document(path, "text", text=raw.decode("utf-8", errors="replace"))
+            body = raw.decode("utf-8", errors="replace")
+            return Document(path, "text", text=body, pages=[body])
         if suffix == ".pdf":
             return _read_pdf(path, raw, page_images)
         if suffix == ".docx":
@@ -114,9 +116,9 @@ def _read_pdf(path: str, raw: bytes, page_images: bool = True) -> Document:
                 rows.extend(tuple(_clean(c) for c in r) for r in table)
         text = "\n".join(pages)
         if len(text) >= TEXT_DENSITY_MIN * len(pdf.pages):
-            return Document(path, "text-layer", text=text, rows=rows)
+            return Document(path, "text-layer", text=text, pages=pages, rows=rows)
         if not page_images:
-            return Document(path, "scan", text=text)
+            return Document(path, "scan", text=text, pages=pages)
         images = [p.to_image(resolution=200).original for p in pdf.pages]
 
     buffers = []
@@ -125,7 +127,7 @@ def _read_pdf(path: str, raw: bytes, page_images: bool = True) -> Document:
         img.save(buf, format="PNG")
         buffers.append(buf.getvalue())
     # No text layer: hand the page images to OCR (Textract) or a vision model.
-    return Document(path, "scan", text=text, page_images=buffers)
+    return Document(path, "scan", text=text, pages=pages, page_images=buffers)
 
 
 def _read_docx(path: str, raw: bytes) -> Document:
@@ -139,7 +141,8 @@ def _read_docx(path: str, raw: bytes) -> Document:
             cells = tuple(_clean(c.text) for c in row.cells)
             rows.append(cells)
             lines.append(": ".join(c for c in cells if c))
-    return Document(path, "docx", text="\n".join(lines), rows=rows)
+    text = "\n".join(lines)
+    return Document(path, "docx", text=text, pages=[text], rows=rows)
 
 
 def _read_xlsx(path: str, raw: bytes) -> Document:
@@ -154,7 +157,8 @@ def _read_xlsx(path: str, raw: bytes) -> Document:
             if any(cells):
                 rows.append(cells)
                 lines.append(": ".join(c for c in cells if c))
-    return Document(path, "xlsx", text="\n".join(lines), rows=rows)
+    text = "\n".join(lines)
+    return Document(path, "xlsx", text=text, pages=[text], rows=rows)
 
 
 # --- label/value pairs -------------------------------------------------
