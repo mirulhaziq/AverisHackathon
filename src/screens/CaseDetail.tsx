@@ -27,7 +27,14 @@ import { Banner, EmptyState } from '../components/feedback';
 import { CategoryChip, ResultChip, StatusChip } from '../components/chips';
 import { TabPanel, Tabs } from '../components/Tabs';
 import { useStore } from '../state/store';
-import { FIELD_LABELS, type Attachment, type EmailCase, type FieldKey, type TimelineStep } from '../types';
+import {
+  FIELD_LABELS,
+  type Attachment,
+  type BodyField,
+  type EmailCase,
+  type FieldKey,
+  type TimelineStep,
+} from '../types';
 
 export function CaseDetail() {
   const { caseId } = useParams();
@@ -210,6 +217,15 @@ export function CaseDetail() {
         </div>
       )}
 
+      {c.intake?.kind === 'details_in_body' && (
+        <Banner tone="warning" title="Details taken from the email body">
+          <p className="banner__line">
+            Nothing was attached, so Tidemark read the values the sender typed into the message. A person confirms
+            them before anyone relies on this comparison.
+          </p>
+        </Banner>
+      )}
+
       {/* ---------- comparison ---------- */}
       <section className="panel" aria-labelledby="cmp-title">
         <header className="panel__head">
@@ -226,12 +242,18 @@ export function CaseDetail() {
           <div className="panel__body">
             <EmptyState
               title={
-                c.category === 'Document comparison request'
-                  ? 'Nothing was compared'
-                  : `Not applicable for a ${c.category.toLowerCase()}`
+                c.intake?.kind === 'awaiting_documents'
+                  ? 'Waiting for the documents'
+                  : c.category === 'Document comparison request'
+                    ? 'Nothing was compared'
+                    : `Not applicable for a ${c.category.toLowerCase()}`
               }
               body={
-                c.attachments.length === 0
+                c.intake?.kind === 'awaiting_documents'
+                  ? `This email asks for the documents rather than sending them${
+                      c.intake.evidence ? ` (“${c.intake.evidence}”)` : ''
+                    }. Nothing was meant to be attached, so there is nothing to check yet and no review is needed.`
+                  : c.attachments.length === 0 && c.category === 'Document comparison request'
                   ? 'This email has no documents attached, so there was nothing to read. Ask the sender to resend with the shipping instruction and the draft bill of lading attached.'
                   : c.failure
                     ? 'The documents could not be read, so no field was compared. Fix the cause above, then retry the case.'
@@ -252,6 +274,8 @@ export function CaseDetail() {
           />
         )}
       </section>
+
+      {c.comparison.length === 0 && c.bodyFields && c.bodyFields.length > 0 && <BodyFields fields={c.bodyFields} />}
 
       {c.attachments.length > 0 && <SourceDocuments c={c} field={selectedField} />}
 
@@ -289,6 +313,60 @@ export function CaseDetail() {
         </Button>
       </div>
     </div>
+  );
+}
+
+/* ---------- details typed into the email body ---------- */
+
+function BodyFields({ fields }: { fields: BodyField[] }) {
+  const found = fields.filter((f) => f.value !== null).length;
+  return (
+    <section className="panel" aria-labelledby="body-fields-title">
+      <header className="panel__head">
+        <div>
+          <h3 id="body-fields-title" className="panel__title">
+            Details in the email body
+          </h3>
+          <p className="panel__note">
+            Read from the message text, for reference. There is no second document to compare them with.
+          </p>
+        </div>
+        <span className="panel__meta">
+          {found} of {fields.length} fields found
+        </span>
+      </header>
+      <div className="table-wrap">
+        <table className="table table--dense">
+          <caption className="sr-only">Values read from the email body, with the line each came from</caption>
+          <thead>
+            <tr>
+              <th scope="col">Document</th>
+              <th scope="col">Field</th>
+              <th scope="col">Value</th>
+              <th scope="col">Source line</th>
+            </tr>
+          </thead>
+          <tbody>
+            {fields.map((f) => (
+              <tr key={`${f.doc}-${f.field}`}>
+                <td>
+                  <span className={`doc-kind doc-kind--${f.doc.toLowerCase()}`}>{f.doc}</span>
+                </td>
+                <td className="field-name">{FIELD_LABELS[f.field]}</td>
+                <td>{f.value ?? <span className="muted">Not stated</span>}</td>
+                <td className="cell-snippet">
+                  {f.snippet ? (
+                    <span className="snippet snippet--inline plain-text">{f.snippet}</span>
+                  ) : (
+                    <span className="muted">—</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 
@@ -342,11 +420,29 @@ function SourceDocuments({ c, field }: { c: EmailCase; field: FieldKey | null })
 
 function DocumentsTab({ c }: { c: EmailCase }) {
   if (c.attachments.length === 0) {
+    // The body is the only evidence an attachment-less email has - a chaser's
+    // request, or the details the sender typed in - so it is shown, not hidden.
     return (
-      <EmptyState
-        title="No attachments"
-        body="Nothing was attached to this email. Ask the sender to resend the shipping instruction and the draft bill of lading."
-      />
+      <>
+        <EmptyState
+          title="No attachments"
+          body={
+            c.intake?.kind === 'awaiting_documents'
+              ? 'Nothing was attached, and nothing was meant to be. The sender is asking for the documents.'
+              : c.bodyFields?.length
+                ? 'Nothing was attached. The details were typed into the email, shown below.'
+                : c.category === 'Document comparison request'
+                  ? 'Nothing was attached to this email. Ask the sender to resend the shipping instruction and the draft bill of lading.'
+                  : 'Nothing was attached to this email.'
+          }
+        />
+        {c.body && (
+          <div className="doc-body">
+            <h4 className="doc-body__title">Email text</h4>
+            <p className="doc-body__text plain-text">{c.body}</p>
+          </div>
+        )}
+      </>
     );
   }
   return (

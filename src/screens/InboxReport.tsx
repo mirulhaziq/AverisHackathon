@@ -25,6 +25,7 @@ const RESULTS: CaseResult[] = [
   'Mismatch found',
   'Needs review',
   'Not applicable',
+  'Awaiting documents',
   'Failed',
 ];
 

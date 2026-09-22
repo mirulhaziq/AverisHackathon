@@ -93,6 +93,7 @@ const RESULTS: CaseResult[] = [
   'Mismatch found',
   'Needs review',
   'Not applicable',
+  'Awaiting documents',
   'Failed',
 ];
 const FIELD_RESULTS: FieldResult[] = ['Match', 'Mismatch', 'Needs review', 'Not compared'];
@@ -239,7 +240,7 @@ export function DesignSystem() {
           Chips
         </h3>
 
-        <Spec label="Result chip" note="The five result words, used verbatim in every screen and every export.">
+        <Spec label="Result chip" note="The six result words, used verbatim in every screen and every export.">
           <div className="ds__row">
             {RESULTS.map((r) => (
               <ResultChip key={r} result={r} />

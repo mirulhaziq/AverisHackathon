@@ -7,12 +7,12 @@ Index  : by_queue             (PK queue, SK updated_at)  -- SPARSE: only items t
          queue == "failed"  -> processing failed, can be retried
 
 Item attributes (all scalars/lists of str, so no float/Decimal issues):
-  email_id, category, status, review_reason, has_defect, defect_fields[],
+  email_id, category, status, review_reason, has_defect, defect_fields[], intake (kind, or absent),
   proc_state ("done"|"failed"), queue, attempts, updated_at, git_sha,
   last_error (json str), record_json (full result record), resolutions_json (human decisions, audit trail)
 
 Owner: cloud. The *content* of record_json (comparisons, evidence...) is owned by the pipeline;
-this module never inspects it except category/status/review_reason/defect_fields.
+this module never inspects it except category/status/review_reason/defect_fields/intake.
 """
 import json
 import os
@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 from functools import lru_cache
 
 LIGHT = ["email_id", "category", "status", "review_reason", "has_defect", "defect_fields",
-         "proc_state", "queue", "attempts", "updated_at", "git_sha", "last_error"]
+         "proc_state", "queue", "attempts", "updated_at", "git_sha", "last_error", "intake"]
 
 
 class DBError(Exception):
@@ -90,6 +90,11 @@ class ResultsDB:
             "review_reason": record.get("review_reason"),
             "has_defect": bool(record.get("has_defect")),
             "defect_fields": list(record.get("defect_fields") or []),
+            # awaiting_documents / attachments_missing / details_in_body - only
+            # on BL_COMPARISON emails with no files (pipeline/intake.py). Kept
+            # on the light row so a list can say "Awaiting documents" rather
+            # than "No differences found" without loading every record.
+            "intake": (record.get("intake") or {}).get("kind"),
             "proc_state": "done",
             "queue": queue,
             "attempts": int(prev.get("attempts", 0)) + 1,

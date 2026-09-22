@@ -83,6 +83,12 @@ export function ResultChip({ result }: { result: CaseResult }) {
           No comparison needed
         </Chip>
       );
+    case 'Awaiting documents':
+      return (
+        <Chip tone="na" variant="outline" icon={<Mail size={ICON} />}>
+          Awaiting documents
+        </Chip>
+      );
     case 'Failed':
       return (
         <Chip tone="fail" icon={<Ban size={ICON} />}>

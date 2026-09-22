@@ -95,6 +95,19 @@ export interface WireStep {
 export type WireStatus = 'OK' | 'MISMATCH' | 'NEEDS_REVIEW';
 export type WireReviewReason = 'wrong_doc_type' | 'missing_attachment' | 'unreadable' | 'missing_value' | null;
 
+/** What a comparison request with no attachments turned out to be (backend pipeline/intake.py). */
+export type WireIntakeKind = 'awaiting_documents' | 'attachments_missing' | 'details_in_body';
+
+export interface WireIntake {
+  kind: WireIntakeKind;
+  decided_by: 'rule' | 'llm';
+  reason: string;
+  evidence: string | null;
+}
+
+/** A value read from the email body, in the same shape a comparison side carries. */
+export type WireBodyValue = { value: string; snippet: string } | null;
+
 export interface WireResultLight {
   email_id: string;
   category: string;
@@ -108,6 +121,7 @@ export interface WireResultLight {
   updated_at: string | null;
   git_sha: string | null;
   last_error: { step: string; kind: string; message: string; retryable: boolean } | null;
+  intake?: WireIntakeKind | null;
 }
 
 export interface WireResolution {
@@ -126,6 +140,9 @@ export interface WireResult {
   has_defect: boolean;
   defect_fields: string[];
   comparisons: WireComparison[];
+  intake?: WireIntake;
+  /** Keyed by side ("SI" / "BL"), then by wire field name. */
+  body_fields?: Partial<Record<'SI' | 'BL', Record<string, WireBodyValue>>>;
   meta: {
     proc_state: 'done' | 'failed' | null;
     queue: 'review' | 'failed' | null;

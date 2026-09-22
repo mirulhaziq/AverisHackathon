@@ -28,12 +28,13 @@ export type CaseStatus =
   | 'Completed'
   | 'Failed';
 
-/** The five result words, used verbatim everywhere. */
+/** The six result words, used verbatim everywhere. */
 export type CaseResult =
   | 'No mismatch detected'
   | 'Mismatch found'
   | 'Needs review'
   | 'Not applicable'
+  | 'Awaiting documents'
   | 'Failed';
 
 /** Per-field comparison outcome. */
@@ -176,6 +177,28 @@ export interface EmailCase {
   };
   /** Whether the documents are a clean text PDF or a scan. */
   sourceQuality?: 'Text PDF' | 'Scan';
+  /** Set on a comparison request that arrived with no attachments: what the
+   * email turned out to be, and why (backend pipeline/intake.py). */
+  intake?: CaseIntake;
+  /** Fields read from the email body rather than an attachment. */
+  bodyFields?: BodyField[];
+}
+
+export type IntakeKind = 'awaiting_documents' | 'attachments_missing' | 'details_in_body';
+
+export interface CaseIntake {
+  kind: IntakeKind;
+  reason: string;
+  decidedBy: 'rule' | 'llm';
+  /** The line of the email that decided it, when a rule did. */
+  evidence: string | null;
+}
+
+export interface BodyField {
+  doc: DocKind;
+  field: FieldKey;
+  value: string | null;
+  snippet: string | null;
 }
 
 /* ---------- review tasks ---------- */
@@ -190,7 +213,8 @@ export type ReasonCode =
   | 'WEIGHT_OUT_OF_TOLERANCE'
   | 'FIELD_NOT_FOUND'
   | 'WRONG_DOC_TYPE'
-  | 'UNREADABLE_DOCUMENT';
+  | 'UNREADABLE_DOCUMENT'
+  | 'DETAILS_IN_BODY';
 
 export const REASON_TEXT: Record<ReasonCode, string> = {
   LOW_CONFIDENCE_OCR: 'The scan was hard to read, so the value is not certain.',
@@ -203,6 +227,8 @@ export const REASON_TEXT: Record<ReasonCode, string> = {
   FIELD_NOT_FOUND: 'The field could not be found in the document.',
   WRONG_DOC_TYPE: 'The second attachment is not actually a draft bill of lading. Check what was sent.',
   UNREADABLE_DOCUMENT: 'A document could not be read. It may be corrupt, blank, or an unsupported file.',
+  DETAILS_IN_BODY:
+    'Nothing was attached, but the sender typed the details into the email. Check them against the message before relying on them.',
 };
 
 export type TaskClaimState = 'Open' | 'Claimed' | 'Overdue';

@@ -692,6 +692,13 @@ Siti`,
     ['PublishResult', 'Waiting', '2026-09-21 05:03:01', 'Held until 1 review task is resolved.'],
   ]),
   reviewHistory: [],
+  intake: {
+    kind: 'attachments_missing',
+    decidedBy: 'rule',
+    reason: 'The email refers to documents that should be attached, and none are.',
+    evidence:
+      'Urgent please. Can you check the documents for the Lisbon shipment and confirm the consignee is right before the carrier issues the original?',
+  },
 };
 
 const E1046: EmailCase = {
@@ -1232,6 +1239,16 @@ Lim Wei Jian`,
     ['PublishResult', 'Done', '2026-09-20 03:12:02', 'Result published: Not applicable.', 590],
   ]),
   reviewHistory: [],
+  // what the backend reads out of this body (pipeline/intake.py extract_body)
+  bodyFields: [
+    { doc: 'SI', field: 'shipper', value: 'Sungai Emas Rubber Sdn Bhd', snippet: 'Shipper: Sungai Emas Rubber Sdn Bhd' },
+    { doc: 'SI', field: 'consignee', value: 'Baltic Tyre Works AS', snippet: 'Consignee: Baltic Tyre Works AS' },
+    { doc: 'SI', field: 'notifyParty', value: null, snippet: null },
+    { doc: 'SI', field: 'portOfLoading', value: 'Port Klang', snippet: 'Port of loading: Port Klang' },
+    { doc: 'SI', field: 'portOfDischarge', value: 'Tallinn', snippet: 'Port of discharge: Tallinn' },
+    { doc: 'SI', field: 'containerCount', value: '2 x 40 HC', snippet: 'Containers: 2 x 40 HC' },
+    { doc: 'SI', field: 'grossWeightKg', value: '19,200 kg', snippet: 'Gross weight: 19,200 kg' },
+  ],
 };
 
 const E1052: EmailCase = {
@@ -2302,5 +2319,6 @@ export const RESULT_ORDER: CaseResult[] = [
   'Mismatch found',
   'Needs review',
   'Not applicable',
+  'Awaiting documents',
   'Failed',
 ];
