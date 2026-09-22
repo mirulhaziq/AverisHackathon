@@ -181,7 +181,12 @@ Pushing to `main` deploys automatically (see `.github/workflows/`). The workflow
   build would use per-user sign-in (the SDD plans Amazon Cognito) instead of a shared token.
 - **No OCR yet.** Scanned PDFs are read from whatever text layer they have; Amazon Textract is designed in the SDD
   but not built.
-- **No port alias table.** `SHANGHAI` vs `CNSHA` is not treated as the same port yet.
+- **No port alias table, and it's checked, not just skipped.** Verified against every real port mismatch in the
+  live data (19 cases): every one is a genuine planted defect where the port *name* changed but the UN/LOCODE
+  was left stale (e.g. `MOMBASA, KENYA (KEMBA)` vs `TUTICORIN, INDIA (KEMBA)`) — confirmed against
+  `ground_truth.json`. A name↔code alias table would make these match on the stale code and *reduce* the score,
+  not improve it, so this isn't a gap so much as a design choice this specific dataset validates. It would matter
+  for a different corpus where the same port is legitimately written two ways with no code attached at all.
 
 ## Dataset
 

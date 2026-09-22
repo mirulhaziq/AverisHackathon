@@ -1,7 +1,9 @@
+import collections
 import copy
 import hmac
 import os
 import re
+import time
 from pathlib import PurePosixPath
 from typing import List, Literal, Optional
 
@@ -34,6 +36,49 @@ def require_demo_token(x_demo_token: str = Header(default="")):
         raise HTTPException(503, "DEMO_TOKEN not configured")
     if not hmac.compare_digest(x_demo_token, expected):
         raise HTTPException(401, "invalid or missing X-Demo-Token")
+
+
+class RateLimiter:
+    """A sliding-window limit on the endpoints that spend Bedrock credits.
+
+    Scoped to one warm Lambda container, not the whole account - a cold
+    start or a second concurrent container gets its own budget. That is a
+    real gap for a determined attacker spinning up many containers, but it
+    stops the actual threat this exists for (one script or one curious judge
+    hammering /process in a loop from a single warm connection), and a
+    correct global limiter needs a shared store (DynamoDB) that isn't worth
+    building for a hackathon demo - see docs/ROADMAP.md.
+    """
+
+    def __init__(self, max_calls: int, window_s: float):
+        self.max_calls = max_calls
+        self.window_s = window_s
+        self.calls: collections.deque[float] = collections.deque()
+
+    def check(self):
+        now = time.monotonic()
+        while self.calls and now - self.calls[0] > self.window_s:
+            self.calls.popleft()
+        if len(self.calls) >= self.max_calls:
+            retry_after = int(self.window_s - (now - self.calls[0])) + 1
+            raise HTTPException(429, f"Rate limit exceeded ({self.max_calls} calls per {int(self.window_s)}s). "
+                                     f"Retry in about {retry_after}s.",
+                                headers={"Retry-After": str(retry_after)})
+        self.calls.append(now)
+
+
+# Separate budgets: a slow trickle of single-email calls should not starve
+# the batch endpoint, and vice versa.
+_process_limiter = RateLimiter(max_calls=int(os.environ.get("RATE_LIMIT_PROCESS", "20")), window_s=60)
+_process_all_limiter = RateLimiter(max_calls=int(os.environ.get("RATE_LIMIT_PROCESS_ALL", "6")), window_s=60)
+
+
+def rate_limit_process():
+    _process_limiter.check()
+
+
+def rate_limit_process_all():
+    _process_all_limiter.check()
 
 
 @app.get("/health")
@@ -124,7 +169,7 @@ def llm_ping():
     return {"model": model, "reply": data}
 
 
-@app.post("/process/{email_id}", dependencies=[Depends(require_demo_token)])
+@app.post("/process/{email_id}", dependencies=[Depends(require_demo_token), Depends(rate_limit_process)])
 def process_email(email_id: str):
     """Runs classify -> extract -> compare for one email and stores the result.
     Token-protected: this is the endpoint that spends Bedrock credits."""
@@ -143,7 +188,7 @@ def process_email(email_id: str):
     return record
 
 
-@app.post("/process-all", dependencies=[Depends(require_demo_token)])
+@app.post("/process-all", dependencies=[Depends(require_demo_token), Depends(rate_limit_process_all)])
 def process_all(limit: int = 20, retry_failed: bool = False):
     """Processes up to `limit` not-yet-processed emails and returns. Call it
     repeatedly until remaining == 0 - each email is written to DynamoDB as
@@ -220,6 +265,37 @@ def stats():
     return _db().stats()
 
 
+@app.get("/export")
+def export():
+    """FR-EVL-01: one JSON object keyed by email_id, in exactly the shape
+    score_cli.py / the server's /submit accept - built server-side from the
+    same rows /results returns, not reconstructed from whatever the UI
+    happens to have loaded (has_defect and review_reason don't round-trip
+    cleanly through the UI's display model). Emails with no result yet are
+    reported separately so a real gap is visible instead of silently
+    producing an incomplete file."""
+    rows = _db().list_results()
+    total = len(get_storage().summary())
+    submission = {
+        r["email_id"]: {
+            "category": r["category"],
+            "status": r["status"],
+            "review_reason": r["review_reason"],
+            "has_defect": r["has_defect"],
+            "defect_fields": r["defect_fields"],
+        }
+        for r in rows
+        if r.get("proc_state") == "done"
+    }
+    return {
+        "submission": submission,
+        "count": len(submission),
+        "total_emails": total,
+        "not_yet_processed": max(total - len(submission), 0),
+        "awaiting_review": sum(1 for r in rows if r.get("queue") == "review"),
+    }
+
+
 class FieldDecision(BaseModel):
     field: Literal["shipper", "consignee", "notify_party", "port_of_loading", "port_of_discharge",
                    "container_count", "gross_weight_kg"]
@@ -269,6 +345,29 @@ def resolve(email_id: str, res: Resolution):
         raise HTTPException(409, "this case is not waiting for review")
     record = {k: v for k, v in current.items() if k not in ("meta", "resolutions")}
     return d.resolve(email_id, res.model_dump(), res.reviewer, apply_resolution(record, res))
+
+
+class Acknowledgement(BaseModel):
+    note: Optional[str] = None
+    reviewer: str = "reviewer"
+
+
+@app.post("/review/{email_id}/acknowledge", dependencies=[Depends(require_demo_token)])
+def acknowledge(email_id: str, ack: Acknowledgement):
+    """For a case-level review (wrong_doc_type / missing_attachment / unreadable) - there is no field
+    to decide on, so there is nothing for /resolve to apply. The result itself (still NEEDS_REVIEW) is
+    the correct answer and is left unchanged; this only records that a person looked at it and takes
+    it out of the queue, the same way /resolve does for a field-level review."""
+    _check_id(email_id)
+    d = _db()
+    try:
+        current = d.get(email_id)
+    except dbm.NotFound:
+        raise HTTPException(404, "no result for this email")
+    if current["meta"].get("queue") != "review":
+        raise HTTPException(409, "this case is not waiting for review")
+    record = {k: v for k, v in current.items() if k not in ("meta", "resolutions")}
+    return d.resolve(email_id, {"acknowledged": True, "note": ack.note}, ack.reviewer, record)
 
 
 @app.post("/dev/seed", dependencies=[Depends(require_demo_token)])

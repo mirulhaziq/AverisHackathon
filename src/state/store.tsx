@@ -413,15 +413,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   );
 
   /* --- the core action: apply decisions and resume the case --- */
-  /* Real save: posts to POST /review/{id}/resolve and rebuilds the case from
-     the server's response, so the report reflects exactly what got stored -
-     not a client-side reconstruction of what the server probably did.
-
-     The one case this can't send anywhere: the synthetic "category" question
-     built for a case-level review (wrong_doc_type / missing_attachment /
-     unreadable - see buildLightReviewTask/buildReviewTask). The backend has
-     no field to attach that decision to yet, so it's acknowledged locally
-     only, with a toast that says so. */
+  /* Real save: posts to POST /review/{id}/resolve (field-level reviews) or
+     POST /review/{id}/acknowledge (the synthetic "category" question built
+     for a case-level review - wrong_doc_type / missing_attachment /
+     unreadable, see buildLightReviewTask/buildReviewTask) and rebuilds the
+     case from the server's response either way, so the report reflects
+     exactly what got stored, not a client-side guess at it. Acknowledging
+     doesn't change the verdict - it's already correct - it only takes the
+     case out of the queue and records who looked at it. */
   const saveDecisions = useCallback(
     async (taskId: string, decisions: Decision[]) => {
       const task = tasks.find((t) => t.id === taskId);
@@ -429,32 +428,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (!task) return { caseId: '', result: 'Needs review' as CaseResult };
 
       const wireDecisions = toWireDecisions(decisions, task.questions);
-      let finalResult: CaseResult = 'Needs review';
+      const updated = wireDecisions
+        ? await api.resolve(task.caseId, wireDecisions, actor)
+        : await api.acknowledge(task.caseId, actor, decisions[0]?.value ?? undefined);
 
-      if (wireDecisions) {
-        const updated = await api.resolve(task.caseId, wireDecisions, actor);
-        const existing = cases.find((c) => c.id === task.caseId);
-        const email = {
-          email_id: task.caseId,
-          from: existing?.sender ?? '',
-          subject: existing?.subject ?? task.subject,
-          body: existing?.body ?? '',
-          attachments: existing?.attachments.map((a) => a.id) ?? [],
-        };
-        const nextCase = buildFullCase(email, updated);
-        setCases((prev) => prev.map((c) => (c.id === task.caseId ? nextCase : c)));
-        finalResult = nextCase.result;
-      } else {
-        pushToast({
-          tone: 'info',
-          title: 'Acknowledged locally',
-          body: 'This review has no matching field on the server yet, so it was only cleared in this browser.',
-        });
-        setCases((prev) =>
-          prev.map((c) => (c.id === task.caseId ? { ...c, status: 'Completed', result: 'Not applicable' } : c)),
-        );
-        finalResult = 'Not applicable';
-      }
+      const existing = cases.find((c) => c.id === task.caseId);
+      const email = {
+        email_id: task.caseId,
+        from: existing?.sender ?? '',
+        subject: existing?.subject ?? task.subject,
+        body: existing?.body ?? '',
+        attachments: existing?.attachments.map((a) => a.id) ?? [],
+      };
+      const nextCase = buildFullCase(email, updated);
+      setCases((prev) => prev.map((c) => (c.id === task.caseId ? nextCase : c)));
+      const finalResult = nextCase.result;
 
       setTasks((prev) => prev.filter((t) => t.id !== taskId));
 
@@ -474,7 +462,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
       return { caseId: task.caseId, result: finalResult };
     },
-    [cases, logAudit, pushToast, tasks, user],
+    [cases, logAudit, tasks, user],
   );
 
   const rejectCase = useCallback(

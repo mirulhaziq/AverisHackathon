@@ -179,6 +179,18 @@ export const api = {
   listFailures: () => request<{ count: number; items: WireResultLight[] }>('/failures'),
   stats: () => request<WireStats>('/stats'),
 
+  /** FR-EVL-01: the real submission shape, built server-side from the same
+   * fields /results uses - not reconstructed from the UI's display model,
+   * which doesn't carry review_reason/has_defect cleanly. */
+  export: () =>
+    request<{
+      submission: Record<string, { category: string; status: string; review_reason: string | null; has_defect: boolean; defect_fields: string[] }>;
+      count: number;
+      total_emails: number;
+      not_yet_processed: number;
+      awaiting_review: number;
+    }>('/export'),
+
   process: (id: string) => request<WireResult>(`/process/${id}`, { method: 'POST', auth: true }),
 
   resolve: (id: string, decisions: WireFieldDecision[], reviewer: string, note?: string) =>
@@ -186,6 +198,16 @@ export const api = {
       method: 'POST',
       auth: true,
       body: JSON.stringify({ decisions, reviewer, note }),
+    }),
+
+  /** For a case-level review (wrong_doc_type / missing_attachment / unreadable) - there's no field
+   * to decide on, so this takes the case out of the queue without changing its (already correct)
+   * verdict, instead of posting an empty decisions[] to /resolve (which the server refuses). */
+  acknowledge: (id: string, reviewer: string, note?: string) =>
+    request<WireResult>(`/review/${id}/acknowledge`, {
+      method: 'POST',
+      auth: true,
+      body: JSON.stringify({ reviewer, note }),
     }),
 };
 

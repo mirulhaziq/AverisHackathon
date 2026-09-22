@@ -5,6 +5,7 @@
 import { useMemo, useState } from 'react';
 import { Download, FileJson, FileSpreadsheet, TriangleAlert } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { api, ApiError } from '../api/client';
 import { Button } from '../components/Button';
 import { Banner, EmptyState } from '../components/feedback';
 import { ResultChip } from '../components/chips';
@@ -56,37 +57,44 @@ export function ExportScreen() {
   const waiting = useMemo(() => cases.filter((c) => c.status === 'Waiting for review'), [cases]);
   const exportable = cases.length;
 
-  function generate() {
+  async function generate() {
     setBusy(true);
-    window.setTimeout(() => {
-      const rows = buildRows(cases, mapping);
-      const record = addExport(format, waiting.length, exportable);
+    try {
       if (format === 'CSV') {
+        // A human-readable spreadsheet - built from whatever's loaded, columns from the export mapping.
+        const rows = buildRows(cases, mapping);
+        const record = addExport(format, waiting.length, exportable);
         download(record.filename, toCsv(rows), 'text/csv;charset=utf-8');
+        pushToast({
+          tone: 'success',
+          title: 'Your file is ready',
+          body: `${record.filename} with ${rows.length} cases.`,
+        });
       } else {
-        download(
-          record.filename,
-          JSON.stringify(
-            {
-              generatedAt: record.createdAt,
-              generatedBy: record.createdBy,
-              caseCount: rows.length,
-              waitingForReview: waiting.length,
-              cases: rows,
-            },
-            null,
-            2,
-          ),
-          'application/json',
-        );
+        // The real submission format (FR-EVL-01): fetched from the server, built from the
+        // same fields /results uses - not reconstructed from the UI's display model, which
+        // doesn't carry review_reason/has_defect cleanly.
+        const result = await api.export();
+        const record = addExport(format, result.awaiting_review, result.count);
+        download(record.filename, JSON.stringify(result.submission, null, 2), 'application/json');
+        pushToast({
+          tone: result.not_yet_processed > 0 ? 'info' : 'success',
+          title: 'Your file is ready',
+          body:
+            result.not_yet_processed > 0
+              ? `${record.filename} with ${result.count} of ${result.total_emails} emails - ${result.not_yet_processed} haven't been processed yet.`
+              : `${record.filename} with ${result.count} cases.`,
+        });
       }
-      setBusy(false);
+    } catch (e) {
       pushToast({
-        tone: 'success',
-        title: 'Your file is ready',
-        body: `${record.filename} with ${rows.length} cases. Record the score and notes in the history below once you have the result.`,
+        tone: 'error',
+        title: 'Could not generate the file',
+        body: e instanceof ApiError ? e.message : 'The API could not be reached.',
       });
-    }, 800);
+    } finally {
+      setBusy(false);
+    }
   }
 
   function startEdit(id: string, score: string, notes: string) {

@@ -134,7 +134,7 @@ fixture) were ported into 63 real pytest tests rather than left as a CLI command
 
 - **UI screens on sample data:** email imports, export history, settings and activity history have no backend endpoints; they are labelled as sample data in the UI.
 - **Case-level reviews** (wrong document type, missing attachment, unreadable) cannot be resolved on the server yet — only per-field reviews are.
-- **Normalization:** no port alias table (e.g. `CNSHA` vs `SHANGHAI`) and no number-word parsing.
+- **Normalization:** no number-word parsing for container counts (e.g. "six containers" written as words rather than a digit) - not observed in the live data, so unverified whether it matters. No port alias table either, but that was checked rather than assumed: all 19 real port mismatches in the data are confirmed-genuine defects (name changed, UN/LOCODE left stale) against `ground_truth.json` - an alias table would make these match and reduce the score. See the README's "Known limitations" for the detail.
 - **Security:** the demo token is baked into the public UI bundle, an accepted hackathon tradeoff. Production would use Cognito sign-in as the SDD describes.
 
 ---
