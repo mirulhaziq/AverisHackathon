@@ -168,6 +168,28 @@ Endpoints that spend money or change data need an `X-Demo-Token` header; read en
 Pushing to `main` deploys automatically (see `.github/workflows/`). The workflows read these GitHub repository
 **variables**: `AWS_ROLE_ARN`, `API_URL`, `UI_BUCKET`, `UI_DISTRIBUTION_ID`, `DEMO_TOKEN`.
 
+## Emails with no attachments
+
+"No attachments" isn't treated as one case. A comparison request with no files is sorted into one of three kinds
+(`backend/app/pipeline/intake.py`), using rules first and the LLM only if the rules can't tell:
+
+| Kind | Example | Result |
+|---|---|---|
+| Awaiting documents | "Please assist to send the draft BL for … for checking asap." | `OK`, shown as **Awaiting documents**, no review |
+| Attachments missing | "Please compare the SI and draft BL … (attachments appear to have been dropped)" | `NEEDS_REVIEW` / `missing_attachment` |
+| Details in the body | The SI and/or BL fields typed into the email | Body read as a document and compared, **always** reviewed |
+
+The body is read by the same rule extractor used for attachments. Every value is re-checked against the text the
+sender actually wrote, and quoted replies and mail-gateway banners are stripped first. New SI requests
+(`SI_REQUEST`) usually carry the whole SI in the body, so those fields are shown on the case page for reference,
+with no comparison.
+
+Measured against the organizers' ground truth: all 94 no-attachment comparison requests are triaged correctly by
+the rules alone (91 awaiting documents, 3 attachments missing), and all 125 SI requests give 7 of 7 fields from
+the body. The headline score doesn't change, because escalation isn't one of its terms. Re-scoring the live
+export with this triage applied raises escalation precision from 0.165 to 1.0 (109 cases flagged down to 18).
+No email in this dataset has both SI and BL details in the body, so that path is covered by unit tests only.
+
 ## Known limitations
 
 - **Sample-only screens.** Email imports, export history, settings and activity history have no backend yet; they

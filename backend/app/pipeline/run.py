@@ -24,8 +24,9 @@ import time
 
 from app.pipeline.classify import classify_email
 from app.pipeline.compare import compare_field
-from app.pipeline.contracts import FIELD_IDS
+from app.pipeline.contracts import FIELD_IDS, FieldValue
 from app.pipeline.extract_llm import extract_case_with_fallback
+from app.pipeline.intake import extract_body, present_count, triage
 from app.pipeline.llm_tools import BedrockBackend, extract_cache
 
 _EMPTY_RESULT = {"status": "OK", "review_reason": None, "has_defect": False, "defect_fields": [], "comparisons": []}
@@ -47,7 +48,46 @@ def _as_legacy(fv):
     return {"value": fv.raw, "snippet": fv.quote or f"(no source line recorded for {fv.raw!r})"}
 
 
+def _body_fields(sides):
+    """extract_body's output -> {"SI": {field: {"value", "snippet"} | None}},
+    the same per-value shape the comparisons carry."""
+    return {role: {f: _as_legacy(fields[f]) for f in FIELD_IDS} for role, fields in sides.items()}
+
+
+def _no_attachments(email, steps):
+    """A BL_COMPARISON email with no files - see intake.py for the three kinds."""
+    sides = extract_body(email)
+    info = _step(steps, "intake", triage, email, sides)
+    steps[-1]["detail"] = {"kind": info["kind"], "decided_by": info["decided_by"]}
+
+    if info["kind"] == "awaiting_documents":
+        # A chaser: nothing to compare and nothing for a person to decide.
+        # OK is the committed answer (it is what the gold says for all 91 in
+        # the bundle); intake is what stops the UI reading it as a pass.
+        return {**_EMPTY_RESULT, "intake": info}
+
+    if info["kind"] == "attachments_missing":
+        return {"status": "NEEDS_REVIEW", "review_reason": "missing_attachment", "has_defect": False,
+                "defect_fields": [], "comparisons": [], "intake": info}
+
+    # details_in_body: compare what the body says, then always review. A side
+    # the body does not carry compares as missing on that side. The export
+    # reason stays missing_attachment - the documents themselves were not
+    # attached, and that is one of the four reasons the submission accepts;
+    # intake carries the detail for the reviewer.
+    empty = {f: FieldValue(missing_reason="absent", confidence=0.0) for f in FIELD_IDS}
+    si, bl = sides.get("SI", empty), sides.get("BL", empty)
+    comparisons = [compare_field(f, _as_legacy(si[f]), _as_legacy(bl[f])) for f in FIELD_IDS]
+    steps.append({"step": "compare", "ok": True})
+    return {"status": "NEEDS_REVIEW", "review_reason": "missing_attachment", "has_defect": False,
+            "defect_fields": [], "comparisons": comparisons, "intake": info,
+            "body_fields": _body_fields(sides)}
+
+
 def _compare_si_bl(storage, email, steps):
+    if not email.get("attachments"):
+        return _no_attachments(email, steps)
+
     backend = BedrockBackend()
     cache = extract_cache()
     result = _step(steps, "extract", extract_case_with_fallback, storage, email, backend, cache)
@@ -89,7 +129,15 @@ def process_email(storage, email: dict) -> dict:
     category = cls["category"]
     steps[-1]["detail"] = {"confidence": cls["confidence"], "reason": cls["reason"]}
 
-    if category != "BL_COMPARISON":
+    if category == "SI_REQUEST" and not email.get("attachments"):
+        # The SI is typed into the body. Read it for the case page - there is
+        # no BL to compare it with, so the verdict is unchanged.
+        sides = extract_body(email, default_role="SI")
+        result = dict(_EMPTY_RESULT)
+        if present_count(sides):
+            result["body_fields"] = _body_fields(sides)
+        steps.append({"step": "read_body", "ok": True, "detail": {"fields_found": present_count(sides)}})
+    elif category != "BL_COMPARISON":
         result = dict(_EMPTY_RESULT)
     else:
         result = _compare_si_bl(storage, email, steps)

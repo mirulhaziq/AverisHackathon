@@ -8,6 +8,10 @@
      "No document" panel for real cases (it already handles that).
    - No batches, exports, audit log, or admin config endpoints - those
      stay on seed data (see state/store.tsx).
+   - A comparison request with no attachments carries `intake` (chaser /
+     attachments missing / details in the body) and, when the body held
+     them, `body_fields`. A chaser maps to 'Awaiting documents', never to
+     'No mismatch detected', even though its wire status is OK.
    - Case-level reviews (wrong_doc_type / missing_attachment / unreadable)
      have no per-field data to show, so they render as a single synthetic
      "category" question. The backend has no endpoint to resolve these
@@ -24,6 +28,8 @@ import type {
 import { attachmentFileUrl } from './client';
 import type {
   Attachment,
+  BodyField,
+  CaseIntake,
   CaseResult,
   CaseStatus,
   Category,
@@ -93,10 +99,16 @@ function mapStatus(r: WireResultLight | WireResult): CaseStatus {
   return 'Completed';
 }
 
+function intakeKind(r: WireResultLight | WireResult) {
+  return typeof r.intake === 'string' ? r.intake : r.intake?.kind;
+}
+
 function mapResult(r: WireResultLight | WireResult): CaseResult {
   const meta = 'meta' in r ? r.meta : r;
   if (meta.proc_state === 'failed') return 'Failed';
   if (r.category !== 'BL_COMPARISON') return 'Not applicable';
+  // A chaser is status OK with nothing compared - it must not read as a pass.
+  if (intakeKind(r) === 'awaiting_documents') return 'Awaiting documents';
   if (r.status === 'MISMATCH') return 'Mismatch found';
   if (r.status === 'NEEDS_REVIEW') return 'Needs review';
   if (r.status === 'OK') return 'No mismatch detected';
@@ -181,6 +193,34 @@ function mapHistory(result: WireResult): ReviewHistoryEntry[] {
   return out;
 }
 
+/** The reason code a review shows. details_in_body exports as
+ * missing_attachment (one of the four the submission accepts), but the
+ * reviewer needs to know the details are in the message. */
+function reasonCodeFor(r: WireResultLight | WireResult): ReasonCode {
+  if (intakeKind(r) === 'details_in_body') return 'DETAILS_IN_BODY';
+  return REASON_MAP[r.review_reason ?? ''] ?? 'FIELD_NOT_FOUND';
+}
+
+function mapIntake(result: WireResult): CaseIntake | undefined {
+  if (!result.intake) return undefined;
+  const { kind, reason, decided_by, evidence } = result.intake;
+  return { kind, reason, decidedBy: decided_by, evidence };
+}
+
+function mapBodyFields(result: WireResult): BodyField[] | undefined {
+  if (!result.body_fields) return undefined;
+  const out: BodyField[] = [];
+  for (const doc of ['SI', 'BL'] as const) {
+    const fields = result.body_fields[doc];
+    if (!fields) continue;
+    for (const [wire, v] of Object.entries(fields)) {
+      const field = FIELD_MAP[wire];
+      if (field) out.push({ doc, field, value: v?.value ?? null, snippet: v?.snippet ?? null });
+    }
+  }
+  return out;
+}
+
 function reasonFromSteps(result: WireResult): string {
   const step = result.steps.find((s) => s.step === 'classify');
   const detail = step?.detail as { reason?: string } | undefined;
@@ -249,6 +289,8 @@ export function buildFullCase(email: WireEmail, result: WireResult): EmailCase {
     comparison: result.comparisons.map(mapComparisonRow),
     timeline: mapTimeline(result),
     reviewHistory: mapHistory(result),
+    intake: mapIntake(result),
+    bodyFields: mapBodyFields(result),
     failure:
       result.meta.proc_state === 'failed' && result.meta.last_error
         ? {
@@ -269,7 +311,7 @@ export function buildFullCase(email: WireEmail, result: WireResult): EmailCase {
  * wrong document type, unreadable file) has no field to point at, so it
  * gets a single synthetic "category" question instead. */
 export function buildReviewTask(subject: string, result: WireResult): ReviewTask {
-  const reasonCodes: ReasonCode[] = [REASON_MAP[result.review_reason ?? ''] ?? 'FIELD_NOT_FOUND'];
+  const reasonCodes: ReasonCode[] = [reasonCodeFor(result)];
   const fieldQuestions: DecisionQuestion[] = result.comparisons
     .filter((c) => c.match === null)
     .map((c) => ({
@@ -320,7 +362,7 @@ export function buildReviewTask(subject: string, result: WireResult): ReviewTask
  * full comparisons are known. loadCaseDetail (state/store.tsx) replaces
  * this with the real buildReviewTask() output once fetched. */
 export function buildLightReviewTask(subject: string, light: WireResultLight): ReviewTask {
-  const reasonCodes: ReasonCode[] = [REASON_MAP[light.review_reason ?? ''] ?? 'FIELD_NOT_FOUND'];
+  const reasonCodes: ReasonCode[] = [reasonCodeFor(light)];
   const question: DecisionQuestion = {
     id: `${light.email_id}-q-loading`,
     field: 'category',
